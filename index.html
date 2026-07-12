@@ -104,7 +104,6 @@
   }
   .step-num.done{ background:var(--green); border-color:var(--green); color:#fff; }
   .step-title{font-weight:700; font-size:15px;}
-  .step-sub{font-size:12.5px; color:var(--text-faint); margin-left:33px; margin-top:-9px; margin-bottom:12px;}
 
   /* ---------- Scanner ---------- */
   .scan-box{
@@ -131,6 +130,14 @@
     cursor:pointer; backdrop-filter:blur(4px);
   }
   .torch-btn.on{ background:var(--amber); border-color:var(--amber); }
+  .zoom-wrap{
+    position:absolute; left:12px; right:12px; bottom:10px; z-index:5;
+    display:none; align-items:center; gap:10px;
+    background:rgba(15,18,25,0.55); border:1px solid rgba(255,255,255,0.25);
+    border-radius:999px; padding:7px 14px; backdrop-filter:blur(4px);
+    color:#fff; font-size:15px; font-weight:700;
+  }
+  .zoom-wrap input[type=range]{ flex:1; accent-color:var(--laser); }
   .scan-frame::before{
     content:''; position:absolute; left:0; right:0; top:0; height:2px;
     background:var(--laser); box-shadow:0 0 10px 2px var(--laser-glow);
@@ -359,12 +366,15 @@
       <div class="step-num" id="numScan">1</div>
       <div class="step-title">Scan barcode</div>
     </div>
-    <div class="step-sub">Point your phone camera at the barcode label on the part</div>
-
     <div class="scan-box idle" id="scanBox">
       <div id="reader"></div>
       <div class="scan-frame" id="scanFrame"></div>
       <button class="torch-btn" id="btnTorch" title="Flashlight">🔦</button>
+      <div class="zoom-wrap" id="zoomWrap">
+        <span>−</span>
+        <input type="range" id="zoomSlider">
+        <span>+</span>
+      </div>
     </div>
 
     <div class="scan-controls">
@@ -398,10 +408,9 @@
         <button class="btn qty-btn" id="qaPlus">+</button>
         <button class="btn btn-primary" id="qaAdd" style="flex:1;">➕ Add quantity</button>
       </div>
-      <div class="hint" style="margin-top:8px;">Or continue with the steps below if you also want to change the photo or description.</div>
     </div>
 
-    <div class="hint" id="camHint">If the camera doesn't start (browser permissions), use manual entry above.</div>
+    <div class="hint" id="camHint"></div>
   </div>
 
   <!-- STEP 2: Device -->
@@ -410,7 +419,6 @@
       <div class="step-num" id="numDevice">2</div>
       <div class="step-title">Where does this part belong?</div>
     </div>
-    <div class="step-sub">Select one or both — tap again to unselect. Shared parts can belong to both machines.</div>
     <div class="choice-grid">
       <div class="choice-btn" data-device="BoxPicker" tabindex="0">
         <span class="ic">📦</span>
@@ -429,7 +437,6 @@
       <div class="step-num" id="numSub">3</div>
       <div class="step-title">Which PillPick component?</div>
     </div>
-    <div class="step-sub">Select one or more components — tap again to unselect</div>
     <div class="choice-grid sub" id="subGrid"></div>
   </div>
 
@@ -439,7 +446,6 @@
       <div class="step-num" id="numConf">4</div>
       <div class="step-title">Prediction confidence</div>
     </div>
-    <div class="step-sub">How confident are you in this guess?</div>
     <div class="conf-grid">
       <div class="conf-btn high" data-conf="High" tabindex="0">
         <div class="lb">✓ High</div>
@@ -458,7 +464,6 @@
       <div class="step-num" id="numQty">5</div>
       <div class="step-title">Quantity</div>
     </div>
-    <div class="step-sub">How many of this part? Default is 1 — tap the number to type it directly</div>
     <div class="qty-row">
       <button class="btn qty-btn" id="btnQtyMinus">−</button>
       <input type="number" id="qtyInput" min="1" value="1" inputmode="numeric">
@@ -472,7 +477,6 @@
       <div class="step-num" id="numPhoto">5</div>
       <div class="step-title">Part photo</div>
     </div>
-    <div class="step-sub">Optional — the photo is included in the final Word report</div>
     <div class="dup-note" id="dupNotePhoto"></div>
     <div class="photo-row">
       <div class="photo-thumb" id="photoThumb">
@@ -497,7 +501,6 @@
       <div class="step-num" id="numDesc">6</div>
       <div class="step-title">Part description</div>
     </div>
-    <div class="step-sub">Optional — dictate it by voice (English), or photograph printed text to extract it automatically (English/Italian). You can edit the result freely.</div>
     <div class="dup-note" id="dupNoteDesc"></div>
     <div class="desc-row">
       <button class="btn mic-btn" id="btnMic">🎙 Start voice recording</button>
@@ -534,7 +537,7 @@
 <div class="toast" id="toast"></div>
 
 <script>
-const APP_VERSION = 'v2.6';
+const APP_VERSION = 'v2.7';
 document.getElementById('appVersion').textContent = APP_VERSION;
 
 const SUB_COMPONENTS = ["AutoBox","Autophial","Autophial+","Pickring","PillPicker","DrugNest"];
@@ -668,8 +671,8 @@ async function startCamera(){
       // pass roughly doubles the JS decoder's speed
       disableFlip: true,
       qrbox: (vw, vh)=>{
-        const w = Math.floor(Math.min(vw * 0.85, 500));
-        return { width: w, height: Math.floor(w * 0.55) };
+        const w = Math.floor(Math.min(vw * 0.9, 560));
+        return { width: w, height: Math.floor(w * 0.45) };
       },
       videoConstraints: Object.assign({
         width: { ideal: 1920 },
@@ -704,9 +707,9 @@ async function startCamera(){
     el('btnStart').style.display='none';
     el('btnStop').style.display='flex';
     el('scanFrame').classList.add('on');
-    camDiag('Camera running — hold the barcode ~10–15 cm away, steady, inside the frame. If it stays blurry, pull back slightly so the lens can focus.');
+    camDiag('');
     torchOn = false;
-    setTimeout(refreshTorchButton, 600); // capabilities become available shortly after start
+    setTimeout(()=>{ refreshTorchButton(); setupZoom(); }, 600); // capabilities become available shortly after start
   }
   function failed(err){
     console.error('Camera start failed:', err);
@@ -761,7 +764,8 @@ function stopCamera(){
       torchOn = false;
       el('btnTorch').style.display='none';
       el('btnTorch').classList.remove('on');
-      camDiag("If the camera doesn't start (browser permissions), use manual entry above.");
+      el('zoomWrap').style.display='none';
+      camDiag('');
     }).catch(()=>{});
   }
 }
@@ -778,6 +782,28 @@ function refreshTorchButton(){
   el('btnTorch').style.display = (cameraRunning && supported) ? 'flex' : 'none';
   el('btnTorch').classList.toggle('on', torchOn);
 }
+
+/* zoom: filling the frame from a comfortable focus distance is the single
+   biggest booster for dense 1D barcodes */
+async function applyZoom(v){
+  try{ await html5QrCode.applyVideoConstraints({ advanced: [{ zoom: Number(v) }] }); }catch(e){}
+}
+
+function setupZoom(){
+  let caps = null;
+  try{ caps = html5QrCode.getRunningTrackCapabilities(); }catch(e){}
+  if(!caps || !caps.zoom){ el('zoomWrap').style.display='none'; return; }
+  const z = el('zoomSlider');
+  z.min = caps.zoom.min || 1;
+  z.max = Math.min(caps.zoom.max || 1, 6);
+  z.step = caps.zoom.step || 0.1;
+  const initial = Math.min(2, Number(z.max));   // gentle 2× head start
+  z.value = initial;
+  applyZoom(initial);
+  el('zoomWrap').style.display='flex';
+}
+
+el('zoomSlider').addEventListener('input', e=> applyZoom(e.target.value));
 
 el('btnTorch').addEventListener('click', async ()=>{
   if(!cameraRunning) return;
