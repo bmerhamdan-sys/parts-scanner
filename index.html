@@ -194,6 +194,25 @@
 
   .save-btn{ margin-top:16px; }
 
+  /* ---------- Quantity ---------- */
+  .qty-row{
+    display:flex; align-items:center; justify-content:space-between;
+    margin-top:14px; padding:12px 14px;
+    background:var(--surface-2); border:1px solid var(--border); border-radius:10px;
+  }
+  .qty-row .qty-label{ font-weight:700; font-size:13.5px; }
+  .qty-stepper{ display:flex; align-items:center; gap:8px; }
+  .qty-btn{ width:42px; padding:9px 0; font-size:17px; font-weight:700; }
+  #qtyInput{
+    width:64px; text-align:center; background:var(--surface); border:1px solid var(--border);
+    color:var(--text); border-radius:9px; padding:9px 6px;
+    font-family:var(--font-mono); font-size:15px; font-weight:600;
+  }
+  #qtyInput:focus{ outline:none; border-color:var(--blue); box-shadow:0 0 0 3px var(--blue-glow); }
+  /* hide number spinners (we have our own buttons) */
+  #qtyInput::-webkit-outer-spin-button, #qtyInput::-webkit-inner-spin-button{ -webkit-appearance:none; margin:0; }
+  #qtyInput{ -moz-appearance:textfield; }
+
   /* ---------- Photo ---------- */
   .photo-row{ display:flex; gap:10px; align-items:center; }
   .photo-thumb{
@@ -436,6 +455,16 @@
     <input type="file" accept="image/*" capture="environment" id="fileOcr" style="display:none;">
     <textarea id="descText" class="desc-textarea" placeholder="The part description will appear here... you can edit it freely"></textarea>
     <div class="hint" id="micHint"></div>
+
+    <div class="qty-row">
+      <span class="qty-label">Quantity</span>
+      <div class="qty-stepper">
+        <button class="btn qty-btn" id="btnQtyMinus">−</button>
+        <input type="number" id="qtyInput" min="1" value="1" inputmode="numeric">
+        <button class="btn qty-btn" id="btnQtyPlus">+</button>
+      </div>
+    </div>
+
     <button class="btn btn-primary btn-wide save-btn" id="btnSave" disabled>💾 Save part &amp; continue to next</button>
   </div>
 
@@ -556,12 +585,31 @@ async function startCamera(){
       Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.CODE_39,
       Html5QrcodeSupportedFormats.CODE_93, Html5QrcodeSupportedFormats.CODABAR,
       Html5QrcodeSupportedFormats.ITF, Html5QrcodeSupportedFormats.UPC_A,
-      Html5QrcodeSupportedFormats.UPC_E, Html5QrcodeSupportedFormats.QR_CODE
+      Html5QrcodeSupportedFormats.UPC_E, Html5QrcodeSupportedFormats.QR_CODE,
+      Html5QrcodeSupportedFormats.DATA_MATRIX, Html5QrcodeSupportedFormats.PDF_417,
+      Html5QrcodeSupportedFormats.AZTEC
     ],
+    // Use Chrome's native BarcodeDetector when available — much faster and
+    // far better at dense 1D codes than the JS decoder.
+    experimentalFeatures: { useBarCodeDetectorIfSupported: true },
     verbose:false
   });
 
-  const scanConfig = { fps:10, qrbox:{width:230,height:150} };
+  // Wide scan box suits 1D barcodes; high-res video makes dense codes readable.
+  function buildScanConfig(constraints){
+    return {
+      fps: 10,
+      qrbox: (vw, vh)=>{
+        const w = Math.floor(Math.min(vw * 0.85, 500));
+        return { width: w, height: Math.floor(w * 0.55) };
+      },
+      videoConstraints: Object.assign({
+        width: { ideal: 1920 },
+        height: { ideal: 1080 }
+      }, constraints)
+    };
+  }
+
   const onScan = (decodedText)=>{ onBarcode(decodedText); };
   const onFrameErr = ()=>{ /* ignore per-frame scan errors */ };
 
@@ -570,7 +618,7 @@ async function startCamera(){
     el('btnStart').style.display='none';
     el('btnStop').style.display='flex';
     el('scanFrame').classList.add('on');
-    camDiag('Camera running — aim at the barcode.');
+    camDiag('Camera running — hold the barcode ~10–15 cm away, steady, inside the frame. If it stays blurry, pull back slightly so the lens can focus.');
   }
   function failed(err){
     console.error('Camera start failed:', err);
@@ -580,21 +628,30 @@ async function startCamera(){
   }
 
   try{
-    // Attempt 1: rear camera by facingMode
-    await html5QrCode.start({ facingMode:"environment" }, scanConfig, onScan, onFrameErr);
+    // Attempt 1: rear camera by facingMode, high resolution
+    await html5QrCode.start(
+      { facingMode:"environment" },
+      buildScanConfig({ facingMode: { ideal: "environment" } }),
+      onScan, onFrameErr);
     started();
   } catch(err1){
     try{
-      // Attempt 2: enumerate cameras and pick the last one (usually the rear camera)
+      // Attempt 2: enumerate cameras and pick the rear one explicitly
       const cams = await Html5Qrcode.getCameras();
       if(!cams || cams.length === 0) throw err1;
       const back = cams.find(c=>/back|rear|environment/i.test(c.label)) || cams[cams.length-1];
-      await html5QrCode.start(back.id, scanConfig, onScan, onFrameErr);
+      await html5QrCode.start(
+        back.id,
+        buildScanConfig({ deviceId: { exact: back.id } }),
+        onScan, onFrameErr);
       started();
     } catch(err2){
       try{
-        // Attempt 3: any camera via facingMode user (front)
-        await html5QrCode.start({ facingMode:"user" }, scanConfig, onScan, onFrameErr);
+        // Attempt 3: front camera as a last resort
+        await html5QrCode.start(
+          { facingMode:"user" },
+          buildScanConfig({ facingMode: "user" }),
+          onScan, onFrameErr);
         started();
         camDiag('Note: using the <b>front</b> camera (the rear camera failed to start).');
       } catch(err3){
@@ -1052,6 +1109,7 @@ function resetDownstream(){
   finalTranscript = '';
   el('descText').value = '';
   el('micStatus').textContent = '';
+  el('qtyInput').value = 1;
   renumber();
 }
 
@@ -1076,6 +1134,15 @@ function updateSaveState(){
   el('btnSave').disabled = !ready;
 }
 
+/* ---------- quantity ---------- */
+function getQty(){
+  const v = parseInt(el('qtyInput').value, 10);
+  return (isNaN(v) || v < 1) ? 1 : v;
+}
+el('btnQtyMinus').addEventListener('click', ()=>{ el('qtyInput').value = Math.max(1, getQty() - 1); });
+el('btnQtyPlus').addEventListener('click', ()=>{ el('qtyInput').value = getQty() + 1; });
+el('qtyInput').addEventListener('change', ()=>{ el('qtyInput').value = getQty(); });
+
 /* ---------- save entry ---------- */
 el('btnSave').addEventListener('click', ()=>{
   stopRecording();
@@ -1083,8 +1150,10 @@ el('btnSave').addEventListener('click', ()=>{
   const existing = entries.find(e => e.barcode === current.barcode);
   const nowStr = new Date().toLocaleString('en-GB', { hour12:true });
 
+  const qty = getQty();
+
   if(existing){
-    existing.qty += 1;
+    existing.qty += qty;
     existing.lastTime = nowStr;
     // keep the original device/component/confidence, but flag if this scan disagreed
     const sameClassification = existing.device === current.device &&
@@ -1103,7 +1172,7 @@ el('btnSave').addEventListener('click', ()=>{
       conf: current.conf,
       photo: current.photo,
       desc: current.desc,
-      qty: 1,
+      qty: qty,
       time: nowStr,
       lastTime: nowStr,
       mismatch: false
@@ -1201,10 +1270,10 @@ function exportWord(){
         <td style="text-align:center;">${i+1}</td>
         <td style="text-align:center;">${photoCell}</td>
         <td style="font-family:'Courier New',monospace; direction:ltr; text-align:center;">${escapeHtml(e.barcode)}</td>
-        <td style="text-align:center;">${deviceLabel}${mismatchNote}</td>
-        <td style="text-align:center; font-weight:bold;">${e.qty}</td>
-        <td style="text-align:center; color:${e.conf==='High' ? '#1a7a4a' : '#a86a00'}; font-weight:bold;">${e.conf}</td>
         <td style="text-align:left; font-size:11.5px;">${descCell}</td>
+        <td style="text-align:center; font-weight:bold;">${e.qty}</td>
+        <td style="text-align:center;">${deviceLabel}${mismatchNote}</td>
+        <td style="text-align:center; color:${e.conf==='High' ? '#1a7a4a' : '#a86a00'}; font-weight:bold;">${e.conf}</td>
         <td style="text-align:center; font-size:11px; color:#555;">${e.qty>1 ? e.time + '<br>Last: ' + e.lastTime : e.time}</td>
       </tr>`;
   }).join('');
@@ -1241,11 +1310,11 @@ function exportWord(){
         <tr>
           <th>#</th>
           <th>Photo</th>
-          <th>Barcode</th>
-          <th>Machine / Component</th>
-          <th>Qty</th>
-          <th>Confidence</th>
+          <th>Part No. (Barcode)</th>
           <th>Description</th>
+          <th>Qty</th>
+          <th>Machine / Component</th>
+          <th>Confidence</th>
           <th>Logged at</th>
         </tr>
       </thead>
