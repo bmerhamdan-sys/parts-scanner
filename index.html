@@ -317,6 +317,23 @@
   .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
 
   .hint{ font-size:11.5px; color:var(--text-faint); margin-top:8px; line-height:1.7; }
+
+  .dup-note{
+    display:none; background:rgba(217,127,0,0.09); border:1px solid var(--amber);
+    border-radius:10px; padding:10px 12px; margin-bottom:12px;
+    font-size:12.5px; line-height:1.7; color:var(--text);
+  }
+  .dup-note b{ color:var(--amber); }
+  .dup-note img{ width:56px; height:56px; border-radius:8px; margin-top:6px; object-fit:cover; border:1px solid var(--border); display:block; }
+  .qa-row{ display:flex; align-items:center; gap:9px; margin-top:10px; }
+  .qa-input{
+    width:72px; text-align:center; background:var(--surface); border:1px solid var(--border);
+    color:var(--text); border-radius:10px; padding:11px 6px;
+    font-family:var(--font-mono); font-size:17px; font-weight:700;
+  }
+  .qa-input:focus{ outline:none; border-color:var(--blue); box-shadow:0 0 0 3px var(--blue-glow); }
+  .qa-input::-webkit-outer-spin-button, .qa-input::-webkit-inner-spin-button{ -webkit-appearance:none; margin:0; }
+  .qa-input{ -moz-appearance:textfield; }
 </style>
 </head>
 <body>
@@ -371,6 +388,17 @@
         <div class="val" id="readoutVal">—</div>
       </div>
       <button class="btn btn-ghost" id="btnRescan">Scan another ↻</button>
+    </div>
+
+    <div class="dup-note" id="dupQuickAdd">
+      <div id="dupQuickInfo"></div>
+      <div class="qa-row">
+        <button class="btn qty-btn" id="qaMinus">−</button>
+        <input type="number" class="qa-input" id="qaInput" min="1" value="1" inputmode="numeric">
+        <button class="btn qty-btn" id="qaPlus">+</button>
+        <button class="btn btn-primary" id="qaAdd" style="flex:1;">➕ Add quantity</button>
+      </div>
+      <div class="hint" style="margin-top:8px;">Or continue with the steps below if you also want to change the photo or description.</div>
     </div>
 
     <div class="hint" id="camHint">If the camera doesn't start (browser permissions), use manual entry above.</div>
@@ -445,6 +473,7 @@
       <div class="step-title">Part photo</div>
     </div>
     <div class="step-sub">Optional — the photo is included in the final Word report</div>
+    <div class="dup-note" id="dupNotePhoto"></div>
     <div class="photo-row">
       <div class="photo-thumb" id="photoThumb">
         <span class="ph-ic">📷</span>
@@ -468,7 +497,8 @@
       <div class="step-num" id="numDesc">6</div>
       <div class="step-title">Part description</div>
     </div>
-    <div class="step-sub">Optional — dictate it by voice (English), or photograph printed text to extract it automatically (English). You can edit the result freely.</div>
+    <div class="step-sub">Optional — dictate it by voice (English), or photograph printed text to extract it automatically (English/Italian). You can edit the result freely.</div>
+    <div class="dup-note" id="dupNoteDesc"></div>
     <div class="desc-row">
       <button class="btn mic-btn" id="btnMic">🎙 Start voice recording</button>
       <button class="btn" id="btnOcr">🔎 Extract text from image</button>
@@ -814,6 +844,75 @@ function setBarcode(code){
   el('readoutVal').textContent = code;
   resetDownstream();
   unlockCard('cardDevice');
+  updateDupNotices(code);
+}
+
+/* ---------- duplicate-part notices + quick quantity add ---------- */
+let dupTargetId = null;
+
+function hideDupNotices(){
+  el('dupNotePhoto').style.display='none';
+  el('dupNoteDesc').style.display='none';
+  el('dupQuickAdd').style.display='none';
+  dupTargetId = null;
+}
+
+function getQaQty(){
+  const v = parseInt(el('qaInput').value, 10);
+  return (isNaN(v) || v < 1) ? 1 : v;
+}
+el('qaMinus').addEventListener('click', ()=>{ el('qaInput').value = Math.max(1, getQaQty() - 1); });
+el('qaPlus').addEventListener('click', ()=>{ el('qaInput').value = getQaQty() + 1; });
+el('qaInput').addEventListener('change', ()=>{ el('qaInput').value = getQaQty(); });
+
+el('qaAdd').addEventListener('click', ()=>{
+  const ex = entries.find(e=> e.id === dupTargetId);
+  if(!ex) return;
+  const n = getQaQty();
+  ex.qty += n;
+  ex.lastTime = new Date().toLocaleString('en-GB', { hour12:true });
+  renderHistory();
+  persist();
+  toast(`Added +${n} — quantity is now ${ex.qty} ✓`);
+  // ready for the next part
+  current = { barcode:null, devices:[], subs:[], conf:null, photo:null, desc:'' };
+  el('readout').style.display='none';
+  resetDownstream();
+  lockCard('cardDevice');
+  el('manualInput').focus();
+});
+
+function updateDupNotices(code){
+  const ex = code ? entries.find(e=> e.barcode === code) : null;
+  if(!ex){ hideDupNotices(); return; }
+
+  toast('This part was logged before — see the notes below');
+
+  // quick-add panel under the barcode readout
+  dupTargetId = ex.id;
+  el('qaInput').value = 1;
+  el('dupQuickInfo').innerHTML =
+    `⚠ <b>Already logged</b> — qty <b>${ex.qty}</b> · ${escapeHtml(entryDeviceLabel(ex))} · Confidence: ${ex.conf}.<br>` +
+    `Just adding more of the same part? Set the number and tap the button:`;
+  el('dupQuickAdd').style.display='block';
+
+  const pn = el('dupNotePhoto');
+  if(ex.photo){
+    pn.innerHTML = `⚠ <b>Already logged</b> (qty ${ex.qty}) and it already has a photo — <b>skip this step</b>.
+      <img src="${ex.photo}" alt="">`;
+  } else {
+    pn.innerHTML = `⚠ <b>Already logged</b> (qty ${ex.qty}) but has <b>no photo yet</b> — you can add one now.`;
+  }
+  pn.style.display='block';
+
+  const dn = el('dupNoteDesc');
+  if(ex.desc){
+    const snippet = ex.desc.length > 120 ? ex.desc.slice(0,120) + '…' : ex.desc;
+    dn.innerHTML = `⚠ <b>Already logged</b> with this description — <b>skip this step</b> unless you want to add to it (new text is appended):<br>“${escapeHtml(snippet)}”`;
+  } else {
+    dn.innerHTML = `⚠ <b>Already logged</b> (qty ${ex.qty}) but has <b>no description yet</b> — you can add one now.`;
+  }
+  dn.style.display='block';
 }
 
 el('btnRescan').addEventListener('click', ()=>{
@@ -1204,6 +1303,7 @@ function resetDownstream(){
   el('descText').value = '';
   el('micStatus').textContent = '';
   el('qtyInput').value = 1;
+  hideDupNotices();
   renumber();
 }
 
@@ -1294,6 +1394,7 @@ function startEdit(id){
   renumber();
   updateSaveState();
 
+  hideDupNotices();
   el('btnSave').textContent = '✔ Update part';
   toast('Editing — change what you need, then tap Update');
   window.scrollTo({ top: 0, behavior: 'smooth' });
