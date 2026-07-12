@@ -8,6 +8,7 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/4.1.1/tesseract.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
   :root{
     --bg:#f4f5f7;
@@ -122,6 +123,14 @@
     border-radius:10px; pointer-events:none; display:none;
   }
   .scan-frame.on{display:block;}
+  .torch-btn{
+    position:absolute; top:10px; right:10px; z-index:5;
+    width:46px; height:46px; border-radius:50%;
+    border:1px solid rgba(255,255,255,0.35); background:rgba(15,18,25,0.55);
+    color:#fff; font-size:20px; display:none; align-items:center; justify-content:center;
+    cursor:pointer; backdrop-filter:blur(4px);
+  }
+  .torch-btn.on{ background:var(--amber); border-color:var(--amber); }
   .scan-frame::before{
     content:''; position:absolute; left:0; right:0; top:0; height:2px;
     background:var(--laser); box-shadow:0 0 10px 2px var(--laser-glow);
@@ -266,11 +275,12 @@
   .hist-item .qty{ background:var(--blue); color:#fff; font-size:10.5px; font-weight:700; padding:1px 7px; border-radius:999px; font-family:var(--font-ui); }
   .hist-item .meta{ font-size:11.5px; color:var(--text-faint); margin-top:2px; }
   .hist-item .desc-note{ font-size:11px; color:var(--text-dim); margin-top:4px; line-height:1.5; }
-  .hist-item .del{
+  .hist-item .del, .hist-item .edit{
     background:none; border:none; color:var(--text-faint); cursor:pointer;
     font-size:16px; padding:4px 6px; border-radius:6px; flex-shrink:0;
   }
   .hist-item .del:hover{ color:var(--laser); background:rgba(224,52,36,0.08); }
+  .hist-item .edit:hover{ color:var(--blue); background:rgba(44,95,216,0.08); }
 
   /* ---------- Footer bar ---------- */
   .footer-bar{
@@ -293,6 +303,7 @@
     padding:13px; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px;
     font-family:var(--font-ui);
   }
+  .export-btn.word{ background:var(--blue); border-color:var(--blue); }
   .export-btn[disabled]{ opacity:.35; pointer-events:none; }
   .export-btn:hover{ filter:brightness(1.06); }
 
@@ -336,6 +347,7 @@
     <div class="scan-box idle" id="scanBox">
       <div id="reader"></div>
       <div class="scan-frame" id="scanFrame"></div>
+      <button class="torch-btn" id="btnTorch" title="Flashlight">🔦</button>
     </div>
 
     <div class="scan-controls">
@@ -370,7 +382,7 @@
       <div class="step-num" id="numDevice">2</div>
       <div class="step-title">Where does this part belong?</div>
     </div>
-    <div class="step-sub">Select the machine you expect this part belongs to</div>
+    <div class="step-sub">Select one or both — tap again to unselect. Shared parts can belong to both machines.</div>
     <div class="choice-grid">
       <div class="choice-btn" data-device="BoxPicker" tabindex="0">
         <span class="ic">📦</span>
@@ -389,7 +401,7 @@
       <div class="step-num" id="numSub">3</div>
       <div class="step-title">Which PillPick component?</div>
     </div>
-    <div class="step-sub">Select the expected sub-component</div>
+    <div class="step-sub">Select one or more components — tap again to unselect</div>
     <div class="choice-grid sub" id="subGrid"></div>
   </div>
 
@@ -484,7 +496,8 @@
 <div class="footer-bar">
   <div class="inner">
     <div class="count">Total<br><b id="footCount">0</b></div>
-    <button class="export-btn" id="btnExport" disabled>📄 Generate Word report</button>
+    <button class="export-btn word" id="btnExport" disabled>📄 Word</button>
+    <button class="export-btn" id="btnExportXlsx" disabled>📊 Excel</button>
   </div>
 </div>
 
@@ -494,7 +507,28 @@
 const SUB_COMPONENTS = ["AutoBox","Autophial","Autophial+","Pickring","PillPicker","DrugNest"];
 
 let entries = [];
-let current = { barcode:null, device:null, sub:null, conf:null, photo:null, desc:'' };
+
+/* ---------- auto-save: the log survives refreshes and browser restarts ---------- */
+const STORE_KEY = 'partsScanner.entries.v1';
+function persist(){
+  try{
+    localStorage.setItem(STORE_KEY, JSON.stringify(entries));
+  }catch(err){
+    console.error('persist failed:', err);
+    toast('⚠ Auto-save failed — device storage is full');
+  }
+}
+function restoreEntries(){
+  try{
+    const raw = localStorage.getItem(STORE_KEY);
+    if(!raw) return;
+    const arr = JSON.parse(raw);
+    if(Array.isArray(arr)){
+      entries = arr.filter(e=> e && e.barcode && Array.isArray(e.devices) && Array.isArray(e.subs));
+    }
+  }catch(err){ console.error('restore failed:', err); }
+}
+let current = { barcode:null, devices:[], subs:[], conf:null, photo:null, desc:'' };
 let html5QrCode = null;
 let cameraRunning = false;
 let recognition = null;
@@ -613,7 +647,17 @@ async function startCamera(){
     };
   }
 
-  const onScan = (decodedText)=>{ onBarcode(decodedText); };
+  // Accept a barcode only after the SAME value is decoded on 2 consecutive
+  // frames — a single blurry frame can misread 1D codes, twice in a row can't.
+  let confirmScan = { text:null, count:0 };
+  const onScan = (decodedText)=>{
+    if(decodedText === confirmScan.text){ confirmScan.count++; }
+    else { confirmScan = { text: decodedText, count: 1 }; }
+    if(confirmScan.count >= 2){
+      confirmScan = { text:null, count:0 };
+      onBarcode(decodedText);
+    }
+  };
   const onFrameErr = ()=>{ /* ignore per-frame scan errors */ };
 
   function started(){
@@ -622,6 +666,8 @@ async function startCamera(){
     el('btnStop').style.display='flex';
     el('scanFrame').classList.add('on');
     camDiag('Camera running — hold the barcode ~10–15 cm away, steady, inside the frame. If it stays blurry, pull back slightly so the lens can focus.');
+    torchOn = false;
+    setTimeout(refreshTorchButton, 600); // capabilities become available shortly after start
   }
   function failed(err){
     console.error('Camera start failed:', err);
@@ -673,10 +719,39 @@ function stopCamera(){
       el('btnStop').style.display='none';
       el('scanFrame').classList.remove('on');
       el('scanBox').classList.add('idle');
+      torchOn = false;
+      el('btnTorch').style.display='none';
+      el('btnTorch').classList.remove('on');
       camDiag("If the camera doesn't start (browser permissions), use manual entry above.");
     }).catch(()=>{});
   }
 }
+
+/* ---------- flashlight (torch) ---------- */
+let torchOn = false;
+
+function refreshTorchButton(){
+  let supported = false;
+  try{
+    const caps = html5QrCode.getRunningTrackCapabilities();
+    supported = !!(caps && caps.torch);
+  }catch(e){}
+  el('btnTorch').style.display = (cameraRunning && supported) ? 'flex' : 'none';
+  el('btnTorch').classList.toggle('on', torchOn);
+}
+
+el('btnTorch').addEventListener('click', async ()=>{
+  if(!cameraRunning) return;
+  try{
+    torchOn = !torchOn;
+    await html5QrCode.applyVideoConstraints({ advanced: [{ torch: torchOn }] });
+  }catch(err){
+    console.error('torch failed:', err);
+    torchOn = false;
+    toast('Flashlight is not supported on this camera');
+  }
+  refreshTorchButton();
+});
 
 function onBarcode(code){
   if(!cameraRunning) return;
@@ -732,8 +807,9 @@ el('fileScan').addEventListener('change', async e=>{
 });
 
 function setBarcode(code){
+  cancelEdit();
   current.barcode = code;
-  current.device = null; current.sub = null; current.conf = null; current.photo = null; current.desc = '';
+  current.devices = []; current.subs = []; current.conf = null; current.photo = null; current.desc = '';
   el('readout').style.display='flex';
   el('readoutVal').textContent = code;
   resetDownstream();
@@ -741,7 +817,8 @@ function setBarcode(code){
 }
 
 el('btnRescan').addEventListener('click', ()=>{
-  current = { barcode:null, device:null, sub:null, conf:null, photo:null, desc:'' };
+  cancelEdit();
+  current = { barcode:null, devices:[], subs:[], conf:null, photo:null, desc:'' };
   el('readout').style.display='none';
   resetDownstream();
   lockCard('cardDevice');
@@ -750,11 +827,11 @@ el('btnRescan').addEventListener('click', ()=>{
 
 /* ---------- photo capture ---------- */
 el('btnPhotoCapture').addEventListener('click', ()=>{
-  if(!current.device){ toast('Select the machine first'); return; }
+  if(current.devices.length === 0){ toast('Select the machine first'); return; }
   el('fileCapture').click();
 });
 el('btnPhotoUpload').addEventListener('click', ()=>{
-  if(!current.device){ toast('Select the machine first'); return; }
+  if(current.devices.length === 0){ toast('Select the machine first'); return; }
   el('fileUpload').click();
 });
 el('fileCapture').addEventListener('change', e=> handlePhotoFile(e.target.files[0]));
@@ -851,7 +928,7 @@ if(SpeechRecognitionAPI){
 }
 
 el('btnMic').addEventListener('click', ()=>{
-  if(!current.device){ toast('Select the machine first'); return; }
+  if(current.devices.length === 0){ toast('Select the machine first'); return; }
   if(isRecording){ stopRecording(); } else { startRecording(); }
 });
 
@@ -889,8 +966,8 @@ async function getOcrWorker(onProgress){
       }
     }
   });
-  await worker.loadLanguage('eng');
-  await worker.initialize('eng');
+  await worker.loadLanguage('eng+ita');
+  await worker.initialize('eng+ita');
   await worker.setParameters({
     tessedit_pageseg_mode: '6',       // treat the label as a uniform block of text
     preserve_interword_spaces: '1'
@@ -909,8 +986,8 @@ function preprocessForOcr(file){
       img.onload = ()=>{
         const maxSide = Math.max(img.width, img.height);
         let factor = 1;
-        if(maxSide < 900) factor = 2;               // upscale small photos
-        else if(maxSide > 2000) factor = 2000/maxSide; // cap huge photos
+        if(maxSide < 1200) factor = Math.min(2.5, 2000/maxSide); // upscale small photos toward ~2000px
+        else if(maxSide > 2000) factor = 2000/maxSide;           // cap huge photos
         const w = Math.round(img.width * factor);
         const h = Math.round(img.height * factor);
 
@@ -982,7 +1059,7 @@ function preprocessForOcr(file){
 function cleanOcrText(raw){
   const lines = String(raw).split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
   const good = lines.filter(l=>{
-    const alnum = (l.match(/[A-Za-z0-9]/g)||[]).length;
+    const alnum = (l.match(/[A-Za-zÀ-ÖØ-öø-ÿ0-9]/g)||[]).length;
     if(alnum < 2) return false;                 // "-", "|", stray marks
     if(alnum / l.length < 0.4) return false;    // mostly symbols => noise
     return true;
@@ -991,7 +1068,7 @@ function cleanOcrText(raw){
 }
 
 el('btnOcr').addEventListener('click', ()=>{
-  if(!current.device){ toast('Select the machine first'); return; }
+  if(current.devices.length === 0){ toast('Select the machine first'); return; }
   if(typeof Tesseract === 'undefined'){ toast('Text extraction tool failed to load'); return; }
   if(ocrRunning) return;
   el('fileOcr').click();
@@ -1011,7 +1088,15 @@ async function runOcr(file){
   try{
     const canvas = await preprocessForOcr(file);
     const worker = await getOcrWorker(setStatus);
-    const { data } = await worker.recognize(canvas);
+    let { data } = await worker.recognize(canvas);
+    // Low confidence? retry with automatic page segmentation and keep the better read.
+    if((data.confidence || 0) < 55){
+      setStatus('Low confidence — retrying with a different mode...');
+      await worker.setParameters({ tessedit_pageseg_mode: '3' });
+      const second = await worker.recognize(canvas);
+      if((second.data.confidence || 0) > (data.confidence || 0)) data = second.data;
+      await worker.setParameters({ tessedit_pageseg_mode: '6' });
+    }
     const extracted = cleanOcrText(data.text || '');
     if(extracted){
       const current_val = el('descText').value.trim();
@@ -1031,55 +1116,61 @@ async function runOcr(file){
   }
 }
 
-/* ---------- device selection ---------- */
+/* ---------- device selection (multi-select) ---------- */
 document.querySelectorAll('#cardDevice .choice-btn').forEach(btn=>{
   btn.addEventListener('click', ()=>{
     if(!current.barcode){ toast('Scan a barcode first'); return; }
-    selectDevice(btn.dataset.device);
+    toggleDevice(btn.dataset.device);
   });
 });
 
-function selectDevice(device){
-  current.device = device;
-  current.sub = null; current.conf = null;
-  document.querySelectorAll('#cardDevice .choice-btn').forEach(b=>{
-    b.classList.toggle('selected', b.dataset.device === device);
-  });
-  markDone('numDevice');
+function toggleDevice(device){
+  const i = current.devices.indexOf(device);
+  if(i >= 0){ current.devices.splice(i, 1); } else { current.devices.push(device); }
 
-  if(device === 'PillPick'){
+  document.querySelectorAll('#cardDevice .choice-btn').forEach(b=>{
+    b.classList.toggle('selected', current.devices.includes(b.dataset.device));
+  });
+
+  const hasPill = current.devices.includes('PillPick');
+  if(hasPill){
     el('cardSub').style.display='block';
     unlockCard('cardSub');
-    lockCard('cardConf');
-    document.querySelectorAll('#subGrid .choice-btn').forEach(b=>b.classList.remove('selected'));
-    renumber();
   } else {
     el('cardSub').style.display='none';
-    unlockCard('cardConf');
-    renumber();
+    current.subs = [];
+    document.querySelectorAll('#subGrid .choice-btn').forEach(b=>b.classList.remove('selected'));
   }
-  unlockCard('cardQty');
-  unlockCard('cardPhoto');
-  unlockCard('cardDesc');
+
+  if(current.devices.length > 0){
+    unlockCard('cardConf');
+    unlockCard('cardQty');
+    unlockCard('cardPhoto');
+    unlockCard('cardDesc');
+  } else {
+    lockCard('cardConf'); lockCard('cardQty'); lockCard('cardPhoto'); lockCard('cardDesc');
+    current.conf = null;
+  }
+  renumber();
   updateConfSelection();
   updateSaveState();
 }
 
 function selectSub(name){
-  current.sub = name;
+  const i = current.subs.indexOf(name);
+  if(i >= 0){ current.subs.splice(i, 1); } else { current.subs.push(name); }
   document.querySelectorAll('#subGrid .choice-btn').forEach(b=>{
-    b.classList.toggle('selected', b.dataset.sub === name);
+    b.classList.toggle('selected', current.subs.includes(b.dataset.sub));
   });
-  markDone('numSub');
-  unlockCard('cardConf');
+  renumber();
   updateSaveState();
 }
 
 /* ---------- confidence ---------- */
 document.querySelectorAll('#cardConf .conf-btn').forEach(btn=>{
   btn.addEventListener('click', ()=>{
-    if(!current.device){ toast('Select the machine first'); return; }
-    if(current.device === 'PillPick' && !current.sub){ toast('Select the sub-component first'); return; }
+    if(current.devices.length === 0){ toast('Select the machine first'); return; }
+    if(current.devices.includes('PillPick') && current.subs.length === 0){ toast('Select the sub-component first'); return; }
     current.conf = btn.dataset.conf;
     updateConfSelection();
     updateSaveState();
@@ -1095,7 +1186,6 @@ function updateConfSelection(){
 /* ---------- card lock/unlock helpers ---------- */
 function lockCard(id){ el(id).classList.add('dim'); }
 function unlockCard(id){ el(id).classList.remove('dim'); }
-function markDone(numId){ el(numId).classList.add('done'); el(numId).textContent='✓'; }
 
 function resetDownstream(){
   lockCard('cardDevice'); lockCard('cardSub'); lockCard('cardConf'); lockCard('cardQty'); lockCard('cardPhoto'); lockCard('cardDesc');
@@ -1119,13 +1209,18 @@ function resetDownstream(){
 
 function renumber(){
   let n = 2;
-  el('numDevice').textContent = current.device && el('numDevice').classList.contains('done') ? '✓' : String(n);
+  const devDone = current.devices.length > 0;
+  el('numDevice').textContent = devDone ? '✓' : String(n);
+  el('numDevice').classList.toggle('done', devDone);
   n++;
-  if(current.device === 'PillPick'){
-    el('numSub').textContent = current.sub && el('numSub').classList.contains('done') ? '✓' : String(n);
+  if(current.devices.includes('PillPick')){
+    const subDone = current.subs.length > 0;
+    el('numSub').textContent = subDone ? '✓' : String(n);
+    el('numSub').classList.toggle('done', subDone);
     n++;
   }
   el('numConf').textContent = current.conf ? '✓' : String(n);
+  el('numConf').classList.toggle('done', !!current.conf);
   n++;
   el('numQty').textContent = String(n);
   n++;
@@ -1135,8 +1230,8 @@ function renumber(){
 }
 
 function updateSaveState(){
-  const needsSub = current.device === 'PillPick';
-  const ready = current.barcode && current.device && current.conf && (!needsSub || current.sub);
+  const needsSub = current.devices.includes('PillPick');
+  const ready = current.barcode && current.devices.length > 0 && current.conf && (!needsSub || current.subs.length > 0);
   el('btnSave').disabled = !ready;
 }
 
@@ -1150,31 +1245,109 @@ el('btnQtyPlus').addEventListener('click', ()=>{ el('qtyInput').value = getQty()
 el('qtyInput').addEventListener('change', ()=>{ el('qtyInput').value = getQty(); });
 
 /* ---------- save entry ---------- */
+/* ---------- edit a saved entry ---------- */
+let editingId = null;
+
+function cancelEdit(){
+  if(editingId === null) return;
+  editingId = null;
+  el('btnSave').textContent = '💾 Save part & continue to next';
+}
+
+function startEdit(id){
+  const e = entries.find(x=>x.id === id);
+  if(!e) return;
+  if(cameraRunning) stopCamera();
+  stopRecording();
+
+  editingId = id;
+  current = { barcode:e.barcode, devices:[...e.devices], subs:[...e.subs], conf:e.conf, photo:e.photo, desc:e.desc || '' };
+
+  el('readout').style.display='flex';
+  el('readoutVal').textContent = e.barcode;
+
+  document.querySelectorAll('#cardDevice .choice-btn').forEach(b=>
+    b.classList.toggle('selected', current.devices.includes(b.dataset.device)));
+  const hasPill = current.devices.includes('PillPick');
+  el('cardSub').style.display = hasPill ? 'block' : 'none';
+  document.querySelectorAll('#subGrid .choice-btn').forEach(b=>
+    b.classList.toggle('selected', current.subs.includes(b.dataset.sub)));
+  updateConfSelection();
+
+  if(current.photo){
+    el('photoImg').src = current.photo;
+    el('photoThumb').classList.add('filled');
+    el('btnPhotoRemove').style.display='block';
+  } else {
+    el('photoImg').src = '';
+    el('photoThumb').classList.remove('filled');
+    el('btnPhotoRemove').style.display='none';
+  }
+
+  el('descText').value = current.desc;
+  finalTranscript = current.desc ? current.desc + ' ' : '';
+  el('qtyInput').value = e.qty;
+
+  unlockCard('cardDevice');
+  if(hasPill) unlockCard('cardSub');
+  unlockCard('cardConf'); unlockCard('cardQty'); unlockCard('cardPhoto'); unlockCard('cardDesc');
+  renumber();
+  updateSaveState();
+
+  el('btnSave').textContent = '✔ Update part';
+  toast('Editing — change what you need, then tap Update');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
 el('btnSave').addEventListener('click', ()=>{
   stopRecording();
   current.desc = el('descText').value.trim();
-  const existing = entries.find(e => e.barcode === current.barcode);
   const nowStr = new Date().toLocaleString('en-GB', { hour12:true });
-
   const qty = getQty();
+
+  if(editingId !== null){
+    const e = entries.find(x=>x.id === editingId);
+    if(e){
+      e.barcode = current.barcode;
+      e.devices = [...current.devices];
+      e.subs = [...current.subs];
+      e.conf = current.conf;
+      e.photo = current.photo;
+      e.desc = current.desc;
+      e.qty = qty;               // when editing, the field is the absolute quantity
+      e.lastTime = nowStr;
+    }
+    cancelEdit();
+    renderHistory();
+    persist();
+    toast('Updated ✓');
+
+    current = { barcode:null, devices:[], subs:[], conf:null, photo:null, desc:'' };
+    el('readout').style.display='none';
+    resetDownstream();
+    lockCard('cardDevice');
+    return;
+  }
+
+  const existing = entries.find(e => e.barcode === current.barcode);
 
   if(existing){
     existing.qty += qty;
     existing.lastTime = nowStr;
     // keep the original device/component/confidence, but flag if this scan disagreed
-    const sameClassification = existing.device === current.device &&
-      (existing.device !== 'PillPick' || existing.sub === current.sub);
+    const sameClassification = sameSet(existing.devices, current.devices) && sameSet(existing.subs, current.subs);
     if(!sameClassification){ existing.mismatch = true; }
     if(!existing.photo && current.photo){ existing.photo = current.photo; }
     if(current.desc){ existing.desc = existing.desc ? existing.desc + ' | ' + current.desc : current.desc; }
     renderHistory();
+    persist();
     toast(`Barcode already logged — quantity is now ${existing.qty}`);
   } else {
     entries.push({
       id: Date.now(),
       barcode: current.barcode,
-      device: current.device,
-      sub: current.sub,
+      devices: [...current.devices],
+      subs: [...current.subs],
       conf: current.conf,
       photo: current.photo,
       desc: current.desc,
@@ -1184,15 +1357,28 @@ el('btnSave').addEventListener('click', ()=>{
       mismatch: false
     });
     renderHistory();
+    persist();
     toast('Saved ✓');
   }
 
-  current = { barcode:null, device:null, sub:null, conf:null, photo:null, desc:'' };
+  current = { barcode:null, devices:[], subs:[], conf:null, photo:null, desc:'' };
   el('readout').style.display='none';
   resetDownstream();
   lockCard('cardDevice');
   el('manualInput').focus();
 });
+
+function sameSet(a, b){
+  if(a.length !== b.length) return false;
+  const sb = new Set(b);
+  return a.every(x=> sb.has(x));
+}
+
+function entryDeviceLabel(e){
+  return e.devices.map(d=>
+    d === 'PillPick' && e.subs.length ? `PillPick (${e.subs.join(', ')})` : d
+  ).join(' + ');
+}
 
 /* ---------- history ---------- */
 function renderHistory(){
@@ -1201,6 +1387,7 @@ function renderHistory(){
   el('countBadge').textContent = totalQty;
   el('footCount').textContent = totalQty;
   el('btnExport').disabled = entries.length === 0;
+  el('btnExportXlsx').disabled = entries.length === 0;
 
   if(entries.length === 0){
     list.innerHTML = '<div class="hist-empty">No parts logged yet — start by scanning a barcode</div>';
@@ -1211,7 +1398,7 @@ function renderHistory(){
     const row = document.createElement('div');
     row.className = 'hist-item';
     const confClass = e.conf === 'High' ? 'high' : 'low';
-    const deviceLabel = e.device === 'PillPick' ? `PillPick — ${e.sub}` : e.device;
+    const deviceLabel = escapeHtml(entryDeviceLabel(e));
     const qtyBadge = e.qty > 1 ? `<span class="qty">×${e.qty}</span>` : '';
     const mismatchNote = e.mismatch ? ' · ⚠ Different classification on a later scan' : '';
     const thumbHtml = e.photo ? `<img class="thumb" src="${e.photo}" alt="">` : `<div class="badge ${confClass}"></div>`;
@@ -1223,11 +1410,15 @@ function renderHistory(){
         <div class="meta">${deviceLabel} · Confidence: ${e.conf} · ${e.qty>1 ? 'Last scan ' + e.lastTime : e.time}${mismatchNote}</div>
         ${descHtml}
       </div>
-      <button class="del" data-id="${e.id}">✕</button>
+      <button class="edit" data-id="${e.id}" title="Edit">✎</button>
+      <button class="del" data-id="${e.id}" title="Delete">✕</button>
     `;
+    row.querySelector('.edit').addEventListener('click', ()=>{ startEdit(e.id); });
     row.querySelector('.del').addEventListener('click', ()=>{
+      if(editingId === e.id) cancelEdit();
       entries = entries.filter(x=>x.id !== e.id);
       renderHistory();
+      persist();
     });
     list.appendChild(row);
   });
@@ -1236,8 +1427,10 @@ function renderHistory(){
 el('btnClear').addEventListener('click', ()=>{
   if(entries.length===0) return;
   if(confirm('Clear all logged parts?')){
+    cancelEdit();
     entries = [];
     renderHistory();
+    persist();
   }
 });
 
@@ -1247,6 +1440,33 @@ function escapeHtml(s){
 
 /* ---------- Word export ---------- */
 el('btnExport').addEventListener('click', exportWord);
+el('btnExportXlsx').addEventListener('click', exportExcel);
+
+function exportExcel(){
+  if(entries.length === 0) return;
+  if(typeof XLSX === 'undefined'){ toast('Excel library failed to load — check the connection'); return; }
+  const rows = entries.map((e,i)=>({
+    '#': i+1,
+    'Part No. (Barcode)': e.barcode,
+    'Description': e.desc || '',
+    'Qty': e.qty,
+    'Machine / Component': entryDeviceLabel(e),
+    'Confidence': e.conf,
+    'Logged at': e.time,
+    'Last scan': e.lastTime,
+    'Has photo': e.photo ? 'Yes' : 'No',
+    'Classification mismatch': e.mismatch ? 'Yes' : ''
+  }));
+  const ws = XLSX.utils.json_to_sheet(rows);
+  ws['!cols'] = [
+    {wch:4},{wch:24},{wch:45},{wch:6},{wch:32},{wch:11},{wch:22},{wch:22},{wch:10},{wch:20}
+  ];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Spare Parts');
+  const stamp = new Date().toISOString().slice(0,10);
+  XLSX.writeFile(wb, `Spare_Parts_Report_${stamp}.xlsx`);
+  toast('Excel file generated ✓');
+}
 
 function wrap76(b64){ return b64.replace(/(.{76})/g, '$1\r\n'); }
 
@@ -1258,7 +1478,7 @@ function exportWord(){
   // referenced by its Content-Location.
   const images = [];
   const rows = entries.map((e,i)=>{
-    const deviceLabel = e.device === 'PillPick' ? `PillPick — ${escapeHtml(e.sub)}` : e.device;
+    const deviceLabel = escapeHtml(entryDeviceLabel(e));
     let photoCell = `<span style="color:#aaa; font-size:11px;">No photo</span>`;
     if(e.photo){
       const m = e.photo.match(/^data:(image\/[a-z0-9.+-]+);base64,(.+)$/i);
@@ -1287,8 +1507,9 @@ function exportWord(){
   const high = entries.filter(e=>e.conf==='High').length;
   const low = entries.filter(e=>e.conf==='Low').length;
   const totalQty = entries.reduce((s,e)=> s + e.qty, 0);
-  const boxCount = entries.filter(e=>e.device==='BoxPicker').reduce((s,e)=> s + e.qty, 0);
-  const pillCount = entries.filter(e=>e.device==='PillPick').reduce((s,e)=> s + e.qty, 0);
+  const boxCount = entries.filter(e=>e.devices.includes('BoxPicker')).reduce((s,e)=> s + e.qty, 0);
+  const pillCount = entries.filter(e=>e.devices.includes('PillPick')).reduce((s,e)=> s + e.qty, 0);
+  const sharedCount = entries.filter(e=>e.devices.length > 1).reduce((s,e)=> s + e.qty, 0);
 
   const html = `
   <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
@@ -1329,6 +1550,7 @@ function exportWord(){
     <div class="summary">
       <b>BoxPicker:</b> ${boxCount} parts &nbsp;|&nbsp;
       <b>PillPick:</b> ${pillCount} parts &nbsp;|&nbsp;
+      <b>Shared (both):</b> ${sharedCount} parts &nbsp;|&nbsp;
       <b>High confidence:</b> ${high} items &nbsp;|&nbsp;
       <b>Low confidence:</b> ${low} items
     </div>
@@ -1373,6 +1595,7 @@ function exportWord(){
   toast('Word report generated ✓');
 }
 
+restoreEntries();
 renderHistory();
 </script>
 </body>
