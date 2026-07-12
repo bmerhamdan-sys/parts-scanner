@@ -347,7 +347,7 @@
       </div>
       <div class="brand-text">
         <div class="t1">Spare Parts Scanner</div>
-        <div class="t2">BoxPicker · PillPick</div>
+        <div class="t2">BoxPicker · PillPick · <span id="appVersion"></span></div>
       </div>
     </div>
     <div class="counter-pill">Logged <b id="countBadge">0</b></div>
@@ -534,6 +534,9 @@
 <div class="toast" id="toast"></div>
 
 <script>
+const APP_VERSION = 'v2.5';
+document.getElementById('appVersion').textContent = APP_VERSION;
+
 const SUB_COMPONENTS = ["AutoBox","Autophial","Autophial+","Pickring","PillPicker","DrugNest"];
 
 let entries = [];
@@ -677,14 +680,29 @@ async function startCamera(){
     };
   }
 
-  // Accept a barcode only after the SAME value is decoded on 2 consecutive
-  // frames — a single blurry frame can misread 1D codes, twice in a row can't.
-  let confirmScan = { text:null, count:0 };
-  const onScan = (decodedText)=>{
-    if(decodedText === confirmScan.text){ confirmScan.count++; }
-    else { confirmScan = { text: decodedText, count: 1 }; }
-    if(confirmScan.count >= 2){
-      confirmScan = { text:null, count:0 };
+  // Misread protection, tuned for speed:
+  // - 2D codes (QR / DataMatrix / Aztec / PDF417) have built-in error
+  //   correction, so a misread is practically impossible => accept instantly.
+  // - 1D codes CAN misread from one blurry frame => require the same value
+  //   twice within a 1.5 s window (not necessarily consecutive frames).
+  let recentReads = [];
+  const onScan = (decodedText, decodedResult)=>{
+    let fmt = '';
+    try{
+      fmt = (decodedResult && decodedResult.result && decodedResult.result.format &&
+             decodedResult.result.format.formatName) || '';
+    }catch(e){}
+    if(/QR|DATA_MATRIX|AZTEC|PDF_417/i.test(String(fmt))){
+      recentReads = [];
+      onBarcode(decodedText);
+      return;
+    }
+    const now = Date.now();
+    recentReads = recentReads.filter(r=> now - r.t < 1500);
+    recentReads.push({ text: decodedText, t: now });
+    const matches = recentReads.filter(r=> r.text === decodedText).length;
+    if(matches >= 2){
+      recentReads = [];
       onBarcode(decodedText);
     }
   };
