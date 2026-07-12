@@ -196,17 +196,13 @@
 
   /* ---------- Quantity ---------- */
   .qty-row{
-    display:flex; align-items:center; justify-content:space-between;
-    margin-top:14px; padding:12px 14px;
-    background:var(--surface-2); border:1px solid var(--border); border-radius:10px;
+    display:flex; align-items:center; justify-content:center; gap:14px;
   }
-  .qty-row .qty-label{ font-weight:700; font-size:13.5px; }
-  .qty-stepper{ display:flex; align-items:center; gap:8px; }
-  .qty-btn{ width:42px; padding:9px 0; font-size:17px; font-weight:700; }
+  .qty-btn{ width:64px; padding:13px 0; font-size:22px; font-weight:700; }
   #qtyInput{
-    width:64px; text-align:center; background:var(--surface); border:1px solid var(--border);
-    color:var(--text); border-radius:9px; padding:9px 6px;
-    font-family:var(--font-mono); font-size:15px; font-weight:600;
+    width:96px; text-align:center; background:var(--surface-2); border:1px solid var(--border);
+    color:var(--text); border-radius:10px; padding:12px 6px;
+    font-family:var(--font-mono); font-size:20px; font-weight:700;
   }
   #qtyInput:focus{ outline:none; border-color:var(--blue); box-shadow:0 0 0 3px var(--blue-glow); }
   /* hide number spinners (we have our own buttons) */
@@ -416,6 +412,20 @@
     </div>
   </div>
 
+  <!-- STEP: Quantity -->
+  <div class="card dim" id="cardQty">
+    <div class="step-label">
+      <div class="step-num" id="numQty">5</div>
+      <div class="step-title">Quantity</div>
+    </div>
+    <div class="step-sub">How many of this part? Default is 1 — tap the number to type it directly</div>
+    <div class="qty-row">
+      <button class="btn qty-btn" id="btnQtyMinus">−</button>
+      <input type="number" id="qtyInput" min="1" value="1" inputmode="numeric">
+      <button class="btn qty-btn" id="btnQtyPlus">+</button>
+    </div>
+  </div>
+
   <!-- STEP 4: Photo -->
   <div class="card dim" id="cardPhoto">
     <div class="step-label">
@@ -455,16 +465,6 @@
     <input type="file" accept="image/*" capture="environment" id="fileOcr" style="display:none;">
     <textarea id="descText" class="desc-textarea" placeholder="The part description will appear here... you can edit it freely"></textarea>
     <div class="hint" id="micHint"></div>
-
-    <div class="qty-row">
-      <span class="qty-label">Quantity</span>
-      <div class="qty-stepper">
-        <button class="btn qty-btn" id="btnQtyMinus">−</button>
-        <input type="number" id="qtyInput" min="1" value="1" inputmode="numeric">
-        <button class="btn qty-btn" id="btnQtyPlus">+</button>
-      </div>
-    </div>
-
     <button class="btn btn-primary btn-wide save-btn" id="btnSave" disabled>💾 Save part &amp; continue to next</button>
   </div>
 
@@ -581,13 +581,11 @@ async function startCamera(){
 
   html5QrCode = new Html5Qrcode("reader", {
     formatsToSupport:[
-      Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8,
       Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.CODE_39,
-      Html5QrcodeSupportedFormats.CODE_93, Html5QrcodeSupportedFormats.CODABAR,
-      Html5QrcodeSupportedFormats.ITF, Html5QrcodeSupportedFormats.UPC_A,
-      Html5QrcodeSupportedFormats.UPC_E, Html5QrcodeSupportedFormats.QR_CODE,
-      Html5QrcodeSupportedFormats.DATA_MATRIX, Html5QrcodeSupportedFormats.PDF_417,
-      Html5QrcodeSupportedFormats.AZTEC
+      Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8,
+      Html5QrcodeSupportedFormats.UPC_A, Html5QrcodeSupportedFormats.UPC_E,
+      Html5QrcodeSupportedFormats.ITF,
+      Html5QrcodeSupportedFormats.QR_CODE, Html5QrcodeSupportedFormats.DATA_MATRIX
     ],
     // Use Chrome's native BarcodeDetector when available — much faster and
     // far better at dense 1D codes than the JS decoder.
@@ -598,14 +596,19 @@ async function startCamera(){
   // Wide scan box suits 1D barcodes; high-res video makes dense codes readable.
   function buildScanConfig(constraints){
     return {
-      fps: 10,
+      fps: 15,
+      // barcodes on parts are never mirrored — skipping the flipped-image
+      // pass roughly doubles the JS decoder's speed
+      disableFlip: true,
       qrbox: (vw, vh)=>{
         const w = Math.floor(Math.min(vw * 0.85, 500));
         return { width: w, height: Math.floor(w * 0.55) };
       },
       videoConstraints: Object.assign({
         width: { ideal: 1920 },
-        height: { ideal: 1080 }
+        height: { ideal: 1080 },
+        // keep the lens refocusing continuously — blur is the #1 cause of slow detection
+        advanced: [{ focusMode: "continuous" }]
       }, constraints)
     };
   }
@@ -1055,6 +1058,7 @@ function selectDevice(device){
     unlockCard('cardConf');
     renumber();
   }
+  unlockCard('cardQty');
   unlockCard('cardPhoto');
   unlockCard('cardDesc');
   updateConfSelection();
@@ -1094,11 +1098,11 @@ function unlockCard(id){ el(id).classList.remove('dim'); }
 function markDone(numId){ el(numId).classList.add('done'); el(numId).textContent='✓'; }
 
 function resetDownstream(){
-  lockCard('cardDevice'); lockCard('cardSub'); lockCard('cardConf'); lockCard('cardPhoto'); lockCard('cardDesc');
+  lockCard('cardDevice'); lockCard('cardSub'); lockCard('cardConf'); lockCard('cardQty'); lockCard('cardPhoto'); lockCard('cardDesc');
   el('cardSub').style.display='none';
   document.querySelectorAll('.choice-btn, .conf-btn').forEach(b=>b.classList.remove('selected'));
-  ['numDevice','numSub','numConf','numPhoto','numDesc'].forEach(id=>{ el(id).classList.remove('done'); });
-  el('numDevice').textContent='2'; el('numSub').textContent='3'; el('numConf').textContent='4'; el('numPhoto').textContent='5'; el('numDesc').textContent='6';
+  ['numDevice','numSub','numConf','numQty','numPhoto','numDesc'].forEach(id=>{ el(id).classList.remove('done'); });
+  el('numDevice').textContent='2'; el('numSub').textContent='3'; el('numConf').textContent='4'; el('numQty').textContent='5'; el('numPhoto').textContent='6'; el('numDesc').textContent='7';
   el('btnSave').disabled = true;
   el('photoThumb').classList.remove('filled');
   el('photoImg').src = '';
@@ -1122,6 +1126,8 @@ function renumber(){
     n++;
   }
   el('numConf').textContent = current.conf ? '✓' : String(n);
+  n++;
+  el('numQty').textContent = String(n);
   n++;
   el('numPhoto').textContent = String(n);
   n++;
