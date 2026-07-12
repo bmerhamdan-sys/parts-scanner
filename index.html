@@ -519,6 +519,7 @@
       <div class="t">Logged parts</div>
       <button class="btn btn-ghost" id="btnClear" style="font-size:11.5px; padding:6px 10px;">Clear all</button>
     </div>
+    <input type="text" id="histSearch" placeholder="🔍 Search part no. / description / machine" style="width:100%; margin-bottom:12px;">
     <div id="histList">
       <div class="hist-empty">No parts logged yet — start by scanning a barcode</div>
     </div>
@@ -537,7 +538,7 @@
 <div class="toast" id="toast"></div>
 
 <script>
-const APP_VERSION = 'v2.7';
+const APP_VERSION = 'v2.8';
 document.getElementById('appVersion').textContent = APP_VERSION;
 
 const SUB_COMPONENTS = ["AutoBox","Autophial","Autophial+","Pickring","PillPicker","DrugNest"];
@@ -1516,7 +1517,13 @@ function entryDeviceLabel(e){
   ).join(' + ');
 }
 
-/* ---------- history ---------- */
+/* ---------- history (with live search) ---------- */
+let histFilter = '';
+el('histSearch').addEventListener('input', e=>{
+  histFilter = e.target.value;
+  renderHistory();
+});
+
 function renderHistory(){
   const list = el('histList');
   const totalQty = entries.reduce((s,e)=> s + e.qty, 0);
@@ -1529,8 +1536,21 @@ function renderHistory(){
     list.innerHTML = '<div class="hist-empty">No parts logged yet — start by scanning a barcode</div>';
     return;
   }
+
+  const q = histFilter.trim().toLowerCase();
+  const visible = !q ? entries : entries.filter(e=>
+    e.barcode.toLowerCase().includes(q) ||
+    (e.desc || '').toLowerCase().includes(q) ||
+    entryDeviceLabel(e).toLowerCase().includes(q)
+  );
+
+  if(visible.length === 0){
+    list.innerHTML = '<div class="hist-empty">No matches for your search</div>';
+    return;
+  }
+
   list.innerHTML = '';
-  entries.slice().reverse().forEach(e=>{
+  visible.slice().reverse().forEach(e=>{
     const row = document.createElement('div');
     row.className = 'hist-item';
     const confClass = e.conf === 'High' ? 'high' : 'low';
@@ -1581,8 +1601,11 @@ el('btnExportXlsx').addEventListener('click', exportExcel);
 function exportExcel(){
   if(entries.length === 0) return;
   if(typeof XLSX === 'undefined'){ toast('Excel library failed to load — check the connection'); return; }
-  const rows = entries.map((e,i)=>({
+  const sorted = entries.slice().sort((a,b)=> entryGroup(a) - entryGroup(b));
+  const GROUP_NAMES = ['BoxPicker','PillPick','Shared'];
+  const rows = sorted.map((e,i)=>({
     '#': i+1,
+    'Group': GROUP_NAMES[entryGroup(e)],
     'Part No. (Barcode)': e.barcode,
     'Description': e.desc || '',
     'Qty': e.qty,
@@ -1595,7 +1618,7 @@ function exportExcel(){
   }));
   const ws = XLSX.utils.json_to_sheet(rows);
   ws['!cols'] = [
-    {wch:4},{wch:24},{wch:45},{wch:6},{wch:32},{wch:11},{wch:22},{wch:22},{wch:10},{wch:20}
+    {wch:4},{wch:10},{wch:24},{wch:45},{wch:6},{wch:32},{wch:11},{wch:22},{wch:22},{wch:10},{wch:20}
   ];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Spare Parts');
@@ -1606,21 +1629,24 @@ function exportExcel(){
 
 function wrap76(b64){ return b64.replace(/(.{76})/g, '$1\r\n'); }
 
-function exportWord(){
-  if(entries.length===0) return;
+function entryGroup(e){
+  if(e.devices.length > 1) return 2;                 // Shared
+  return e.devices[0] === 'BoxPicker' ? 0 : 1;       // BoxPicker / PillPick
+}
 
-  // Word ignores data: URI images in HTML .doc files, so we build an MHTML
-  // document instead: each photo is embedded as a separate MIME part and
-  // referenced by its Content-Location.
+function exportWord(){
+  if(entries.length === 0) return;
+
   const images = [];
-  const rows = entries.map((e,i)=>{
+
+  function rowHtml(e, i){
     const deviceLabel = escapeHtml(entryDeviceLabel(e));
     let photoCell = `<span style="color:#aaa; font-size:11px;">No photo</span>`;
     if(e.photo){
       const m = e.photo.match(/^data:(image\/[a-z0-9.+-]+);base64,(.+)$/i);
       if(m){
         const ext = m[1].toLowerCase() === 'image/png' ? 'png' : 'jpg';
-        const loc = `file:///C:/parts/part_photo_${i}.${ext}`;
+        const loc = `file:///C:/parts/part_photo_${images.length}.${ext}`;
         images.push({ loc, type:m[1], b64:m[2] });
         photoCell = `<img src="${loc}" width="90" height="90" style="border:1px solid #ccc;">`;
       }
@@ -1638,7 +1664,35 @@ function exportWord(){
         <td style="text-align:center; color:${e.conf==='High' ? '#1a7a4a' : '#a86a00'}; font-weight:bold;">${e.conf}</td>
         <td style="text-align:center; font-size:11px; color:#555;">${e.qty>1 ? e.time + '<br>Last: ' + e.lastTime : e.time}</td>
       </tr>`;
-  }).join('');
+  }
+
+  const thead = `
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Photo</th>
+          <th>Part No. (Barcode)</th>
+          <th>Description</th>
+          <th>Qty</th>
+          <th>Machine / Component</th>
+          <th>Confidence</th>
+          <th>Logged at</th>
+        </tr>
+      </thead>`;
+
+  const groups = [
+    { title: 'BoxPicker parts',                      items: entries.filter(e=> entryGroup(e) === 0) },
+    { title: 'PillPick parts',                       items: entries.filter(e=> entryGroup(e) === 1) },
+    { title: 'Shared parts (BoxPicker + PillPick)',  items: entries.filter(e=> entryGroup(e) === 2) }
+  ].filter(g=> g.items.length > 0);
+
+  const sections = groups.map(g=>{
+    const qtySum = g.items.reduce((s,e)=> s + e.qty, 0);
+    const rows = g.items.map((e,i)=> rowHtml(e, i)).join('');
+    return `
+    <h2>${g.title} <span style="font-weight:normal; color:#666; font-size:12px;">(${g.items.length} items · ${qtySum} parts)</span></h2>
+    <table>${thead}<tbody>${rows}</tbody></table>`;
+  }).join('<br>');
 
   const high = entries.filter(e=>e.conf==='High').length;
   const low = entries.filter(e=>e.conf==='Low').length;
@@ -1657,7 +1711,8 @@ function exportWord(){
     <style>
       body{ font-family:'IBM Plex Sans','Segoe UI',Arial; direction:ltr; }
       h1{ font-size:20px; color:#111; margin-bottom:2px;}
-      .sub{ color:#666; font-size:12px; margin-bottom:18px;}
+      h2{ font-size:14px; color:#1c2230; border-bottom:2px solid #1c2230; padding-bottom:4px; margin:22px 0 8px;}
+      .sub{ color:#666; font-size:12px; margin-bottom:6px;}
       table{ border-collapse:collapse; width:100%; }
       th{ background:#1c2230; color:#fff; padding:8px 6px; font-size:12px; text-align:center; }
       td{ border:1px solid #ccc; padding:7px 6px; font-size:12px; }
@@ -1668,21 +1723,7 @@ function exportWord(){
   <body dir="ltr">
     <h1>Spare Parts Inventory Report — BoxPicker / PillPick</h1>
     <div class="sub">Exported: ${new Date().toLocaleString('en-GB')} &nbsp;|&nbsp; Distinct items: ${entries.length} &nbsp;|&nbsp; Total parts (by quantity): ${totalQty}</div>
-    <table>
-      <thead>
-        <tr>
-          <th>#</th>
-          <th>Photo</th>
-          <th>Part No. (Barcode)</th>
-          <th>Description</th>
-          <th>Qty</th>
-          <th>Machine / Component</th>
-          <th>Confidence</th>
-          <th>Logged at</th>
-        </tr>
-      </thead>
-      <tbody>${rows}</tbody>
-    </table>
+    ${sections}
     <div class="summary">
       <b>BoxPicker:</b> ${boxCount} parts &nbsp;|&nbsp;
       <b>PillPick:</b> ${pillCount} parts &nbsp;|&nbsp;
