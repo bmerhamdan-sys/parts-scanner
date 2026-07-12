@@ -534,7 +534,7 @@
 <div class="toast" id="toast"></div>
 
 <script>
-const APP_VERSION = 'v2.5';
+const APP_VERSION = 'v2.6';
 document.getElementById('appVersion').textContent = APP_VERSION;
 
 const SUB_COMPONENTS = ["AutoBox","Autophial","Autophial+","Pickring","PillPicker","DrugNest"];
@@ -680,30 +680,21 @@ async function startCamera(){
     };
   }
 
-  // Misread protection, tuned for speed:
-  // - 2D codes (QR / DataMatrix / Aztec / PDF417) have built-in error
-  //   correction, so a misread is practically impossible => accept instantly.
-  // - 1D codes CAN misread from one blurry frame => require the same value
-  //   twice within a 1.5 s window (not necessarily consecutive frames).
-  let recentReads = [];
-  const onScan = (decodedText, decodedResult)=>{
-    let fmt = '';
-    try{
-      fmt = (decodedResult && decodedResult.result && decodedResult.result.format &&
-             decodedResult.result.format.formatName) || '';
-    }catch(e){}
-    if(/QR|DATA_MATRIX|AZTEC|PDF_417/i.test(String(fmt))){
-      recentReads = [];
+  // Original fast behavior: accept the first successful decode instantly.
+  // Single tiny guard: suspiciously short reads (< 4 chars) — the classic
+  // signature of a truncated misread — need one repeat before being accepted.
+  let lastShort = { text:null, t:0 };
+  const onScan = (decodedText)=>{
+    if(decodedText.length >= 4){
       onBarcode(decodedText);
       return;
     }
     const now = Date.now();
-    recentReads = recentReads.filter(r=> now - r.t < 1500);
-    recentReads.push({ text: decodedText, t: now });
-    const matches = recentReads.filter(r=> r.text === decodedText).length;
-    if(matches >= 2){
-      recentReads = [];
+    if(decodedText === lastShort.text && now - lastShort.t < 2000){
+      lastShort = { text:null, t:0 };
       onBarcode(decodedText);
+    } else {
+      lastShort = { text: decodedText, t: now };
     }
   };
   const onFrameErr = ()=>{ /* ignore per-frame scan errors */ };
