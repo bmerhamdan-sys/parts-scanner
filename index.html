@@ -579,7 +579,7 @@
 <div class="toast" id="toast"></div>
 
 <script>
-const APP_VERSION = 'v3.2';
+const APP_VERSION = 'v3.3';
 document.getElementById('appVersion').textContent = APP_VERSION;
 
 /* ---------- theme switcher ---------- */
@@ -971,7 +971,7 @@ el('qaAdd').addEventListener('click', ()=>{
   el('readout').style.display='none';
   resetDownstream();
   lockCard('cardDevice');
-  el('manualInput').focus();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 });
 
 function updateDupNotices(code){
@@ -1177,8 +1177,8 @@ function preprocessForOcr(file){
       img.onload = ()=>{
         const maxSide = Math.max(img.width, img.height);
         let factor = 1;
-        if(maxSide < 1200) factor = Math.min(2.5, 1600/maxSide); // upscale small photos toward ~1600px
-        else if(maxSide > 1600) factor = 1600/maxSide;           // cap huge photos
+        if(maxSide < 1200) factor = Math.min(2.5, 2000/maxSide); // upscale small photos toward ~2000px
+        else if(maxSide > 2000) factor = 2000/maxSide;           // cap huge photos
         const w = Math.round(img.width * factor);
         const h = Math.round(img.height * factor);
 
@@ -1246,29 +1246,6 @@ function preprocessForOcr(file){
   });
 }
 
-// Fast downscale for the orientation probe
-function downscaleCanvas(src, maxSide){
-  const scale = Math.min(1, maxSide / Math.max(src.width, src.height));
-  if(scale === 1) return src;
-  const c = document.createElement('canvas');
-  c.width = Math.max(1, Math.round(src.width * scale));
-  c.height = Math.max(1, Math.round(src.height * scale));
-  c.getContext('2d').drawImage(src, 0, 0, c.width, c.height);
-  return c;
-}
-
-// Rotate a canvas by 90/180/270 degrees (for auto-orientation detection)
-function rotateCanvas(src, deg){
-  const c = document.createElement('canvas');
-  if(deg === 90 || deg === 270){ c.width = src.height; c.height = src.width; }
-  else { c.width = src.width; c.height = src.height; }
-  const ctx = c.getContext('2d');
-  ctx.translate(c.width/2, c.height/2);
-  ctx.rotate(deg * Math.PI / 180);
-  ctx.drawImage(src, -src.width/2, -src.height/2);
-  return c;
-}
-
 // Keep only lines that look like real text, then join with ", " (no line breaks)
 function cleanOcrText(raw){
   const lines = String(raw).split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
@@ -1302,23 +1279,16 @@ async function runOcr(file){
   try{
     const canvas = await preprocessForOcr(file);
     const worker = await getOcrWorker(setStatus);
-
-    // Orientation probe: recognize a TINY copy (fast) at 0/180/90/270 and pick
-    // the most confident direction — then run the full recognition only ONCE.
-    const probe = downscaleCanvas(canvas, 640);
-    setStatus('Detecting orientation...');
-    let bestDeg = 0, bestConf = -1;
-    for(const deg of [0, 180, 90, 270]){
-      const cv = deg === 0 ? probe : rotateCanvas(probe, deg);
-      const res = await worker.recognize(cv);
-      const conf = res.data.confidence || 0;
-      if(conf > bestConf){ bestConf = conf; bestDeg = deg; }
-      if(deg === 0 && conf >= 60) break;   // photo is upright — skip the rest
-    }
-
     setStatus('Extracting text...');
-    const finalCanvas = bestDeg === 0 ? canvas : rotateCanvas(canvas, bestDeg);
-    const { data } = await worker.recognize(finalCanvas);
+    let { data } = await worker.recognize(canvas);
+    // Low confidence? retry once with automatic page segmentation, keep the better read.
+    if((data.confidence || 0) < 55){
+      setStatus('Low confidence — retrying with a different mode...');
+      await worker.setParameters({ tessedit_pageseg_mode: '3' });
+      const second = await worker.recognize(canvas);
+      if((second.data.confidence || 0) > (data.confidence || 0)) data = second.data;
+      await worker.setParameters({ tessedit_pageseg_mode: '6' });
+    }
     const extracted = cleanOcrText(data.text || '');
     if(extracted){
       const current_val = el('descText').value.trim();
@@ -1589,7 +1559,7 @@ el('btnSave').addEventListener('click', ()=>{
   el('readout').style.display='none';
   resetDownstream();
   lockCard('cardDevice');
-  el('manualInput').focus();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 });
 
 function sameSet(a, b){
