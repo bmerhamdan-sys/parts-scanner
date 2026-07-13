@@ -253,15 +253,16 @@
     display:flex; align-items:center; justify-content:center; gap:14px;
   }
   .qty-btn{ width:64px; padding:13px 0; font-size:22px; font-weight:700; }
-  #qtyInput{
+  #qtyInput, #boxInput{
     width:96px; text-align:center; background:var(--surface-2); border:1px solid var(--border);
     color:var(--text); border-radius:10px; padding:12px 6px;
     font-family:var(--font-mono); font-size:20px; font-weight:700;
   }
-  #qtyInput:focus{ outline:none; border-color:var(--blue); box-shadow:0 0 0 3px var(--blue-glow); }
+  #qtyInput:focus, #boxInput:focus{ outline:none; border-color:var(--blue); box-shadow:0 0 0 3px var(--blue-glow); }
   /* hide number spinners (we have our own buttons) */
-  #qtyInput::-webkit-outer-spin-button, #qtyInput::-webkit-inner-spin-button{ -webkit-appearance:none; margin:0; }
-  #qtyInput{ -moz-appearance:textfield; }
+  #qtyInput::-webkit-outer-spin-button, #qtyInput::-webkit-inner-spin-button,
+  #boxInput::-webkit-outer-spin-button, #boxInput::-webkit-inner-spin-button{ -webkit-appearance:none; margin:0; }
+  #qtyInput, #boxInput{ -moz-appearance:textfield; }
 
   /* ---------- Photo ---------- */
   .photo-row{ display:flex; gap:10px; align-items:center; }
@@ -512,6 +513,19 @@
     </div>
   </div>
 
+  <!-- STEP: Storage box -->
+  <div class="card dim" id="cardBox">
+    <div class="step-label">
+      <div class="step-num" id="numBox">6</div>
+      <div class="step-title">Storage box no.</div>
+    </div>
+    <div class="qty-row">
+      <button class="btn qty-btn" id="btnBoxMinus">−</button>
+      <input type="number" id="boxInput" min="1" value="1" inputmode="numeric">
+      <button class="btn qty-btn" id="btnBoxPlus">+</button>
+    </div>
+  </div>
+
   <!-- STEP 4: Photo -->
   <div class="card dim" id="cardPhoto">
     <div class="step-label">
@@ -579,7 +593,7 @@
 <div class="toast" id="toast"></div>
 
 <script>
-const APP_VERSION = 'v3.3';
+const APP_VERSION = 'v3.4';
 document.getElementById('appVersion').textContent = APP_VERSION;
 
 /* ---------- theme switcher ---------- */
@@ -618,6 +632,7 @@ function restoreEntries(){
     const arr = JSON.parse(raw);
     if(Array.isArray(arr)){
       entries = arr.filter(e=> e && e.barcode && Array.isArray(e.devices) && Array.isArray(e.subs));
+      entries.forEach(e=>{ if(!e.box) e.box = 1; });
     }
   }catch(err){ console.error('restore failed:', err); }
 }
@@ -1337,10 +1352,11 @@ function toggleDevice(device){
   if(current.devices.length > 0){
     unlockCard('cardConf');
     unlockCard('cardQty');
+    unlockCard('cardBox');
     unlockCard('cardPhoto');
     unlockCard('cardDesc');
   } else {
-    lockCard('cardConf'); lockCard('cardQty'); lockCard('cardPhoto'); lockCard('cardDesc');
+    lockCard('cardConf'); lockCard('cardQty'); lockCard('cardBox'); lockCard('cardPhoto'); lockCard('cardDesc');
     current.conf = null;
   }
   renumber();
@@ -1380,11 +1396,11 @@ function lockCard(id){ el(id).classList.add('dim'); }
 function unlockCard(id){ el(id).classList.remove('dim'); }
 
 function resetDownstream(){
-  lockCard('cardDevice'); lockCard('cardSub'); lockCard('cardConf'); lockCard('cardQty'); lockCard('cardPhoto'); lockCard('cardDesc');
+  lockCard('cardDevice'); lockCard('cardSub'); lockCard('cardConf'); lockCard('cardQty'); lockCard('cardBox'); lockCard('cardPhoto'); lockCard('cardDesc');
   el('cardSub').style.display='none';
   document.querySelectorAll('.choice-btn, .conf-btn').forEach(b=>b.classList.remove('selected'));
-  ['numDevice','numSub','numConf','numQty','numPhoto','numDesc'].forEach(id=>{ el(id).classList.remove('done'); });
-  el('numDevice').textContent='2'; el('numSub').textContent='3'; el('numConf').textContent='4'; el('numQty').textContent='5'; el('numPhoto').textContent='6'; el('numDesc').textContent='7';
+  ['numDevice','numSub','numConf','numQty','numBox','numPhoto','numDesc'].forEach(id=>{ el(id).classList.remove('done'); });
+  el('numDevice').textContent='2'; el('numSub').textContent='3'; el('numConf').textContent='4'; el('numQty').textContent='5'; el('numBox').textContent='6'; el('numPhoto').textContent='7'; el('numDesc').textContent='8';
   el('btnSave').disabled = true;
   el('photoThumb').classList.remove('filled');
   el('photoImg').src = '';
@@ -1417,6 +1433,8 @@ function renumber(){
   n++;
   el('numQty').textContent = String(n);
   n++;
+  el('numBox').textContent = String(n);
+  n++;
   el('numPhoto').textContent = String(n);
   n++;
   el('numDesc').textContent = String(n);
@@ -1436,6 +1454,20 @@ function getQty(){
 el('btnQtyMinus').addEventListener('click', ()=>{ el('qtyInput').value = Math.max(1, getQty() - 1); });
 el('btnQtyPlus').addEventListener('click', ()=>{ el('qtyInput').value = getQty() + 1; });
 el('qtyInput').addEventListener('change', ()=>{ el('qtyInput').value = getQty(); });
+
+/* ---------- storage box (sticky: keeps the last number the user set) ---------- */
+const BOX_KEY = 'partsScanner.lastBox';
+function getBox(){
+  const v = parseInt(el('boxInput').value, 10);
+  return (isNaN(v) || v < 1) ? 1 : v;
+}
+function saveLastBox(){
+  try{ localStorage.setItem(BOX_KEY, String(getBox())); }catch(e){}
+}
+try{ el('boxInput').value = parseInt(localStorage.getItem(BOX_KEY), 10) || 1; }catch(e){}
+el('btnBoxMinus').addEventListener('click', ()=>{ el('boxInput').value = Math.max(1, getBox() - 1); saveLastBox(); });
+el('btnBoxPlus').addEventListener('click', ()=>{ el('boxInput').value = getBox() + 1; saveLastBox(); });
+el('boxInput').addEventListener('change', ()=>{ el('boxInput').value = getBox(); saveLastBox(); });
 
 /* ---------- save entry ---------- */
 /* ---------- edit a saved entry ---------- */
@@ -1480,10 +1512,11 @@ function startEdit(id){
   el('descText').value = current.desc;
   finalTranscript = current.desc ? current.desc + ' ' : '';
   el('qtyInput').value = e.qty;
+  el('boxInput').value = e.box || 1;
 
   unlockCard('cardDevice');
   if(hasPill) unlockCard('cardSub');
-  unlockCard('cardConf'); unlockCard('cardQty'); unlockCard('cardPhoto'); unlockCard('cardDesc');
+  unlockCard('cardConf'); unlockCard('cardQty'); unlockCard('cardBox'); unlockCard('cardPhoto'); unlockCard('cardDesc');
   renumber();
   updateSaveState();
 
@@ -1509,6 +1542,7 @@ el('btnSave').addEventListener('click', ()=>{
       e.photo = current.photo;
       e.desc = current.desc;
       e.qty = qty;               // when editing, the field is the absolute quantity
+      e.box = getBox();
       e.lastTime = nowStr;
     }
     cancelEdit();
@@ -1546,12 +1580,14 @@ el('btnSave').addEventListener('click', ()=>{
       photo: current.photo,
       desc: current.desc,
       qty: qty,
+      box: getBox(),
       time: nowStr,
       lastTime: nowStr,
       mismatch: false
     });
     renderHistory();
     persist();
+    saveLastBox();
     toast('Saved ✓');
   }
 
@@ -1620,7 +1656,7 @@ function renderHistory(){
       ${thumbHtml}
       <div class="info">
         <div class="bc">${escapeHtml(e.barcode)} ${qtyBadge}</div>
-        <div class="meta">${deviceLabel} · Confidence: ${e.conf} · ${e.qty>1 ? 'Last scan ' + e.lastTime : e.time}${mismatchNote}</div>
+        <div class="meta">📦 Box ${e.box || 1} · ${deviceLabel} · Confidence: ${e.conf} · ${e.qty>1 ? 'Last scan ' + e.lastTime : e.time}${mismatchNote}</div>
         ${descHtml}
       </div>
       <button class="edit" data-id="${e.id}" title="Edit">✎</button>
@@ -1658,7 +1694,7 @@ el('btnExportXlsx').addEventListener('click', exportExcel);
 function exportExcel(){
   if(entries.length === 0) return;
   if(typeof XLSX === 'undefined'){ toast('Excel library failed to load — check the connection'); return; }
-  const sorted = entries.slice().sort((a,b)=> entryGroup(a) - entryGroup(b));
+  const sorted = entries.slice().sort((a,b)=> ((a.box || 1) - (b.box || 1)) || (entryGroup(a) - entryGroup(b)));
   const GROUP_NAMES = ['BoxPicker','PillPick','Shared'];
   const rows = sorted.map((e,i)=>({
     '#': i+1,
@@ -1666,6 +1702,7 @@ function exportExcel(){
     'Part No. (Barcode)': e.barcode,
     'Description': e.desc || '',
     'Qty': e.qty,
+    'Box': e.box || 1,
     'Machine / Component': entryDeviceLabel(e),
     'Confidence': e.conf,
     'Logged at': e.time,
@@ -1675,7 +1712,7 @@ function exportExcel(){
   }));
   const ws = XLSX.utils.json_to_sheet(rows);
   ws['!cols'] = [
-    {wch:4},{wch:10},{wch:24},{wch:45},{wch:6},{wch:32},{wch:11},{wch:22},{wch:22},{wch:10},{wch:20}
+    {wch:4},{wch:10},{wch:24},{wch:45},{wch:6},{wch:6},{wch:32},{wch:11},{wch:22},{wch:22},{wch:10},{wch:20}
   ];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Spare Parts');
@@ -1717,6 +1754,7 @@ function exportWord(){
         <td style="font-family:'Courier New',monospace; direction:ltr; text-align:center;">${escapeHtml(e.barcode)}</td>
         <td style="text-align:left; font-size:11.5px;">${descCell}</td>
         <td style="text-align:center; font-weight:bold;">${e.qty}</td>
+        <td style="text-align:center; font-weight:bold;">${e.box || 1}</td>
         <td style="text-align:center;">${deviceLabel}${mismatchNote}</td>
         <td style="text-align:center; color:${e.conf==='High' ? '#1a7a4a' : '#a86a00'}; font-weight:bold;">${e.conf}</td>
         <td style="text-align:center; font-size:11px; color:#555;">${e.qty>1 ? e.time + '<br>Last: ' + e.lastTime : e.time}</td>
@@ -1731,6 +1769,7 @@ function exportWord(){
           <th>Part No. (Barcode)</th>
           <th>Description</th>
           <th>Qty</th>
+          <th>Box</th>
           <th>Machine / Component</th>
           <th>Confidence</th>
           <th>Logged at</th>
@@ -1745,7 +1784,8 @@ function exportWord(){
 
   const sections = groups.map(g=>{
     const qtySum = g.items.reduce((s,e)=> s + e.qty, 0);
-    const rows = g.items.map((e,i)=> rowHtml(e, i)).join('');
+    const sortedItems = g.items.slice().sort((a,b)=> (a.box || 1) - (b.box || 1));
+    const rows = sortedItems.map((e,i)=> rowHtml(e, i)).join('');
     return `
     <h2>${g.title} <span style="font-weight:normal; color:#666; font-size:12px;">(${g.items.length} items · ${qtySum} parts)</span></h2>
     <table>${thead}<tbody>${rows}</tbody></table>`;
