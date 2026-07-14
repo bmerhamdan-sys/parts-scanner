@@ -668,7 +668,7 @@
 <div class="toast" id="toast"></div>
 
 <script>
-const APP_VERSION = 'v3.9';
+const APP_VERSION = 'v4.0';
 document.getElementById('appVersion').textContent = APP_VERSION;
 
 /* ---------- theme switcher ---------- */
@@ -1331,50 +1331,44 @@ el('btnApiKey').addEventListener('click', promptApiKey);
 el('btnGeminiKey').addEventListener('click', promptGeminiKey);
 renderEngineUI();
 
-// Gemini: a vision model that READS and UNDERSTANDS the label — it returns a
-// tidy one-line summary (part no, manufacturer, type) instead of raw OCR text.
-async function recognizeWithGemini(file, setStatus){
-  const key = getGeminiKey();
-  if(!key) throw new Error('No Gemini key');
-  setStatus('Preparing the image...');
-  const canvas = await preprocessForOcr(file, /* raw */ true);
-  const b64 = canvas.toDataURL('image/jpeg', 0.85).split(',')[1];
+// Gemini: a vision model that READS and UNDERSTANDS the label.
+// NOTE: 2.5-class models "think" by default and thinking tokens are billed against
+// maxOutputTokens — with a small budget the reply comes back EMPTY. So we disable
+// thinking and give a generous budget.
+const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.0-flash'];
 
-  const prompt =
-    'This photo shows a Swisslog Healthcare spare-part label (PillPick / BoxPicker pharmacy automation).\n\n' +
-    'YOUR TASK: read ONLY the small printed DESCRIPTION text on the label.\n\n' +
-    'IGNORE COMPLETELY:\n' +
-    '- the barcode and the long digits printed next to it (the part number) — never output them\n' +
-    '- the "swisslog healthcare" logo and brand name\n' +
-    '- recycling / certification symbols (CE, RoHS, PAP, plastic codes), warnings, patents\n' +
-    '- the plastic bag, the part itself, the table, hands, background, other labels\n\n' +
-    'The description may be printed in Italian or English, often in small or faded ink.\n' +
-    'It typically names the component and its dimensions, e.g. "PIVOT BALL DOUBLE BEVEL SHOULDERS 4.9mm".\n\n' +
-    'Return ONLY a JSON object, no markdown, no code fences, with exactly these keys:\n' +
-    '{\n' +
-    '  "literal": "the description text exactly as you can read it, character for character",\n' +
-    '  "corrected": "the same description with faded/unclear characters restored, using your knowledge of standard mechanical component names and Swisslog terminology; keep the original language",\n' +
-    '  "english": "the corrected description translated into clear technical English (if it is already English, tidy it up)",\n' +
-    '  "confidence": "high | medium | low"\n' +
-    '}\n\n' +
-    'Rules: do not invent a description you cannot see. Keep dimensions and numbers exactly as printed.\n' +
-    'If no description text is readable at all, return {"literal":"","corrected":"","english":"","confidence":"low"}';
+async function callGeminiModel(model, key, b64, prompt){
+  const url = 'https://generativelanguage.googleapis.com/v1beta/models/' +
+              model + ':generateContent?key=' + encodeURIComponent(key);
+  const body = {
+    contents: [{
+      parts: [
+        { text: prompt },
+        { inline_data: { mime_type: 'image/jpeg', data: b64 } }
+      ]
+    }],
+    generationConfig: {
+      temperature: 0,
+      maxOutputTokens: 1024,
+      thinkingConfig: { thinkingBudget: 0 }   // no thinking → tokens go to the answer
+    }
+  };
 
-  setStatus('Reading label (Gemini AI)...');
-  const url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + encodeURIComponent(key);
-  const res = await fetch(url, {
+  let res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{
-        parts: [
-          { text: prompt },
-          { inline_data: { mime_type: 'image/jpeg', data: b64 } }
-        ]
-      }],
-      generationConfig: { temperature: 0, maxOutputTokens: 300 }
-    })
+    body: JSON.stringify(body)
   });
+
+  // Some models reject thinkingConfig — retry once without it.
+  if(res.status === 400){
+    delete body.generationConfig.thinkingConfig;
+    res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+  }
 
   if(!res.ok){
     let msg = 'HTTP ' + res.status;
@@ -1382,24 +1376,70 @@ async function recognizeWithGemini(file, setStatus){
       const err = await res.json();
       msg = (err.error && err.error.message) || msg;
     }catch(e){}
-    throw new Error(msg);
+    const e = new Error(msg);
+    e.status = res.status;
+    throw e;
   }
+
   const json = await res.json();
   const cand = (json.candidates && json.candidates[0]) || {};
   const parts = (cand.content && cand.content.parts) || [];
-  let text = parts.map(p=> p.text || '').join(' ').trim();
-  if(!text) return null;
-
-  // strip ```json fences if the model added them
-  text = text.replace(/```json/gi, '').replace(/```/g, '').trim();
-  try{
-    const obj = JSON.parse(text);
-    if(!obj.literal && !obj.corrected && !obj.english) return null;
-    return obj;
-  }catch(e){
-    // not JSON — treat the whole reply as a literal reading
-    return { literal: text, corrected: '', english: '', confidence: 'low' };
+  const text = parts.map(p=> p.text || '').join(' ').trim();
+  if(!text){
+    throw new Error('Empty reply (' + (cand.finishReason || 'no content') + ')');
   }
+  return text;
+}
+
+async function recognizeWithGemini(file, setStatus){
+  const key = getGeminiKey();
+  if(!key) throw new Error('No Gemini key saved');
+  setStatus('Preparing the image...');
+  const canvas = await preprocessForOcr(file, /* raw */ true);
+  const b64 = canvas.toDataURL('image/jpeg', 0.9).split(',')[1];
+
+  const prompt =
+    'This photo shows a Swisslog Healthcare spare-part label (pharmacy automation: PillPick / BoxPicker / AutoPhial).\n\n' +
+    'YOUR TASK: read ONLY the small printed DESCRIPTION line of text on the label.\n\n' +
+    'IGNORE COMPLETELY (never output these):\n' +
+    '- the barcode and the long numeric part number printed under or beside it\n' +
+    '- the "swisslog healthcare" brand name and logo\n' +
+    '- recycling symbols, CE / RoHS / UL / WEEE marks, warnings\n' +
+    '- the plastic bag, table, hands, keyboard, other objects in the background\n' +
+    '- batch, serial or date codes\n\n' +
+    'The description may be English or Italian, printed small, faint, tilted or partly worn.\n' +
+    'Use your knowledge of mechanical spare-part terminology to repair broken or faded words.\n\n' +
+    'Reply with STRICT JSON only. No markdown, no code fences, no commentary:\n' +
+    '{"literal":"","corrected":"","english":"","language":"","confidence":"high|medium|low"}\n\n' +
+    'FIELDS:\n' +
+    '- literal: exactly the characters you can see, no guessing.\n' +
+    '- corrected: the most likely intended description (repair faded/broken words, keep sizes like ø4.9mm as printed).\n' +
+    '- english: corrected description in English (translate if Italian; repeat it if already English).\n' +
+    '- language: "English" or "Italian".\n' +
+    '- confidence: your confidence in "corrected".\n\n' +
+    'If no description text is readable, reply: {"literal":"","corrected":"","english":"","language":"","confidence":"low"}';
+
+  let lastErr = null;
+  for(const model of GEMINI_MODELS){
+    try{
+      setStatus('Reading label (' + model + ')...');
+      let text = await callGeminiModel(model, key, b64, prompt);
+      text = text.replace(/```json/gi, '').replace(/```/g, '').trim();
+      try{
+        const obj = JSON.parse(text);
+        if(!obj.literal && !obj.corrected && !obj.english) return null;
+        return obj;
+      }catch(e){
+        return { literal:'', corrected:text, english:'', language:'', confidence:'low' };
+      }
+    }catch(err){
+      lastErr = err;
+      console.error('Gemini model ' + model + ' failed:', err);
+      // 404 = model not available on this key: try the next one. Otherwise stop.
+      if(err.status && err.status !== 404) break;
+    }
+  }
+  throw lastErr || new Error('Gemini request failed');
 }
 
 /* ---------- Gemini suggestion card ---------- */
@@ -1632,16 +1672,16 @@ async function runOcr(file){
           toast('Gemini read the label — pick a version below');
           return;   // user confirms; nothing is written automatically
         }
-        toast('No readable description found on the label');
+        toast('Gemini found no readable description — move closer to the printed line');
         return;
       }catch(err){
         console.error('Gemini failed:', err);
-        toast('Gemini failed (' + err.message + ') — falling back to offline');
-        const canvas = await preprocessForOcr(file);
-        const worker = await getOcrWorker(setStatus);
-        setStatus('Extracting text...');
-        const { data } = await worker.recognize(canvas);
-        rawText = data.text || '';
+        // Show the real reason instead of silently pasting offline OCR garbage.
+        el('micStatus').textContent = '';
+        alert('Gemini could not read the label.\n\nReason: ' + err.message +
+              '\n\nNothing was written to the description. You can switch the engine to ' +
+              '"Offline" or "Vision" and try again.');
+        return;
       }
     } else if(getEngine() === 'vision'){
       try{
