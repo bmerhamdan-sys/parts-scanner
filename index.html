@@ -591,9 +591,11 @@
       <span>Text engine:</span>
       <div class="engine-pill">
         <button id="engTess" class="active">Offline</button>
-        <button id="engCloud">Google Vision</button>
+        <button id="engCloud">Vision</button>
+        <button id="engGemini">Gemini AI</button>
       </div>
-      <button class="key-link" id="btnApiKey">Set API key</button>
+      <button class="key-link" id="btnApiKey">Vision key</button>
+      <button class="key-link" id="btnGeminiKey">Gemini key</button>
     </div>
     <div class="desc-row">
       <button class="btn icon-btn mic-btn" id="btnMic" title="Dictate the description" aria-label="Dictate the description">🎙</button>
@@ -634,7 +636,7 @@
 <div class="toast" id="toast"></div>
 
 <script>
-const APP_VERSION = 'v3.6';
+const APP_VERSION = 'v3.7';
 document.getElementById('appVersion').textContent = APP_VERSION;
 
 /* ---------- theme switcher ---------- */
@@ -1219,6 +1221,7 @@ el('btnClearDesc').addEventListener('click', ()=>{
 /* ---------- OCR engine selection (offline Tesseract vs Google Cloud Vision) ---------- */
 const ENGINE_KEY = 'partsScanner.ocrEngine';
 const APIKEY_KEY = 'partsScanner.visionKey';
+const GEMKEY_KEY = 'partsScanner.geminiKey';
 
 function getEngine(){
   try{ return localStorage.getItem(ENGINE_KEY) || 'tesseract'; }catch(e){ return 'tesseract'; }
@@ -1226,10 +1229,18 @@ function getEngine(){
 function getApiKey(){
   try{ return localStorage.getItem(APIKEY_KEY) || ''; }catch(e){ return ''; }
 }
+function getGeminiKey(){
+  try{ return localStorage.getItem(GEMKEY_KEY) || ''; }catch(e){ return ''; }
+}
 function setEngine(name){
   if(name === 'vision' && !getApiKey()){
     toast('Add your Google Vision API key first');
     promptApiKey();
+    return;
+  }
+  if(name === 'gemini' && !getGeminiKey()){
+    toast('Add your Gemini API key first');
+    promptGeminiKey();
     return;
   }
   try{ localStorage.setItem(ENGINE_KEY, name); }catch(e){}
@@ -1239,7 +1250,27 @@ function renderEngineUI(){
   const eng = getEngine();
   el('engTess').classList.toggle('active', eng === 'tesseract');
   el('engCloud').classList.toggle('active', eng === 'vision');
-  el('btnApiKey').textContent = getApiKey() ? 'Change API key' : 'Set API key';
+  el('engGemini').classList.toggle('active', eng === 'gemini');
+  el('btnApiKey').textContent = getApiKey() ? 'Vision key ✓' : 'Vision key';
+  el('btnGeminiKey').textContent = getGeminiKey() ? 'Gemini key ✓' : 'Gemini key';
+}
+function promptGeminiKey(){
+  const k = prompt(
+    'Paste your Gemini API key (from aistudio.google.com).\n\n' +
+    'It is stored only on this device and sent directly to Google.\n' +
+    'Leave empty to remove it.',
+    getGeminiKey());
+  if(k === null) return;
+  const key = k.trim();
+  try{
+    if(key){ localStorage.setItem(GEMKEY_KEY, key); toast('Gemini key saved'); }
+    else {
+      localStorage.removeItem(GEMKEY_KEY);
+      if(getEngine() === 'gemini') localStorage.setItem(ENGINE_KEY, 'tesseract');
+      toast('Gemini key removed');
+    }
+  }catch(e){ toast('Could not save the key on this device'); }
+  renderEngineUI();
 }
 function promptApiKey(){
   const cur = getApiKey();
@@ -1262,8 +1293,60 @@ function promptApiKey(){
 }
 el('engTess').addEventListener('click', ()=> setEngine('tesseract'));
 el('engCloud').addEventListener('click', ()=> setEngine('vision'));
+el('engGemini').addEventListener('click', ()=> setEngine('gemini'));
 el('btnApiKey').addEventListener('click', promptApiKey);
+el('btnGeminiKey').addEventListener('click', promptGeminiKey);
 renderEngineUI();
+
+// Gemini: a vision model that READS and UNDERSTANDS the label — it returns a
+// tidy one-line summary (part no, manufacturer, type) instead of raw OCR text.
+async function recognizeWithGemini(file, setStatus){
+  const key = getGeminiKey();
+  if(!key) throw new Error('No Gemini key');
+  setStatus('Preparing the image...');
+  const canvas = await preprocessForOcr(file, /* raw */ true);
+  const b64 = canvas.toDataURL('image/jpeg', 0.85).split(',')[1];
+
+  const prompt =
+    'This is a photo of a spare-part label from a pharmacy automation machine. ' +
+    'Read every printed marking and return ONLY a single line describing the part, ' +
+    'using this order when the information is present: manufacturer, part/model number, ' +
+    'description, key ratings (voltage, current, size). ' +
+    'Separate the fields with ", ". Keep the exact alphanumeric codes as printed. ' +
+    'Do not add commentary, labels, quotes or line breaks. ' +
+    'If no text is readable, reply with exactly: NONE';
+
+  setStatus('Reading label (Gemini AI)...');
+  const url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + encodeURIComponent(key);
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{
+        parts: [
+          { text: prompt },
+          { inline_data: { mime_type: 'image/jpeg', data: b64 } }
+        ]
+      }],
+      generationConfig: { temperature: 0, maxOutputTokens: 300 }
+    })
+  });
+
+  if(!res.ok){
+    let msg = 'HTTP ' + res.status;
+    try{
+      const err = await res.json();
+      msg = (err.error && err.error.message) || msg;
+    }catch(e){}
+    throw new Error(msg);
+  }
+  const json = await res.json();
+  const cand = (json.candidates && json.candidates[0]) || {};
+  const parts = (cand.content && cand.content.parts) || [];
+  const text = parts.map(p=> p.text || '').join(' ').trim();
+  if(!text || /^NONE$/i.test(text)) return '';
+  return text;
+}
 
 // Google Cloud Vision: built for text in photos (product labels, signs).
 // Handles rotation, skew and poor lighting server-side.
@@ -1440,7 +1523,19 @@ async function runOcr(file){
   try{
     let rawText = '';
 
-    if(getEngine() === 'vision'){
+    if(getEngine() === 'gemini'){
+      try{
+        rawText = await recognizeWithGemini(file, setStatus);
+      }catch(err){
+        console.error('Gemini failed:', err);
+        toast('Gemini failed (' + err.message + ') — falling back to offline');
+        const canvas = await preprocessForOcr(file);
+        const worker = await getOcrWorker(setStatus);
+        setStatus('Extracting text...');
+        const { data } = await worker.recognize(canvas);
+        rawText = data.text || '';
+      }
+    } else if(getEngine() === 'vision'){
       try{
         rawText = await recognizeWithVision(file, setStatus);
       }catch(err){
