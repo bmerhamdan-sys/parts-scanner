@@ -322,6 +322,31 @@
   }
   .engine-pill button.active{ background:var(--blue); color:#fff; }
   .key-link{ background:none; border:none; color:var(--blue); font-size:11.5px; cursor:pointer; text-decoration:underline; padding:0; font-family:var(--font-ui); }
+
+  .sugg-box{
+    display:none; border:1px solid var(--blue); background:rgba(44,95,216,0.06);
+    border-radius:12px; padding:12px; margin-bottom:12px;
+  }
+  .sugg-head{
+    display:flex; align-items:center; justify-content:space-between;
+    font-size:11.5px; font-weight:700; color:var(--blue); margin-bottom:10px;
+  }
+  .sugg-head .close{
+    background:none; border:none; color:var(--text-faint); font-size:15px;
+    cursor:pointer; padding:2px 5px; line-height:1;
+  }
+  .sugg-item{ border-top:1px solid var(--border); padding:9px 0 0; margin-top:9px; }
+  .sugg-item:first-of-type{ border-top:none; padding-top:0; margin-top:0; }
+  .sugg-label{ font-size:10.5px; color:var(--text-faint); font-family:var(--font-mono); text-transform:uppercase; letter-spacing:.4px; }
+  .sugg-text{ font-size:13px; line-height:1.6; margin:3px 0 7px; word-break:break-word; }
+  .sugg-actions{ display:flex; gap:7px; }
+  .sugg-btn{
+    border:1px solid var(--border); background:var(--surface); color:var(--text);
+    border-radius:8px; padding:6px 12px; font-size:11.5px; font-weight:600;
+    cursor:pointer; font-family:var(--font-ui);
+  }
+  .sugg-btn.use{ background:var(--blue); border-color:var(--blue); color:#fff; }
+  .sugg-btn:hover{ filter:brightness(1.08); }
   .desc-textarea{
     width:100%; min-height:88px; resize:vertical; padding-right:46px;
     background:var(--surface-2); border:1px solid var(--border); color:var(--text);
@@ -603,6 +628,13 @@
       <span class="mic-status" id="micStatus"></span>
     </div>
     <input type="file" accept="image/*" capture="environment" id="fileOcr" style="display:none;">
+    <div class="sugg-box" id="suggBox">
+      <div class="sugg-head">
+        <span>🤖 Gemini reading — tap to use</span>
+        <button class="close" id="suggClose" title="Dismiss">✕</button>
+      </div>
+      <div id="suggItems"></div>
+    </div>
     <div class="desc-wrap">
       <textarea id="descText" class="desc-textarea" placeholder="The part description will appear here... you can edit it freely"></textarea>
       <button class="clear-text-btn" id="btnClearDesc" title="Clear the description" aria-label="Clear the description">✕</button>
@@ -636,7 +668,7 @@
 <div class="toast" id="toast"></div>
 
 <script>
-const APP_VERSION = 'v3.8';
+const APP_VERSION = 'v3.9';
 document.getElementById('appVersion').textContent = APP_VERSION;
 
 /* ---------- theme switcher ---------- */
@@ -1214,6 +1246,7 @@ el('btnClearDesc').addEventListener('click', ()=>{
   finalTranscript = '';
   current.desc = '';
   refreshClearDescBtn();
+  hideSuggestions();
   el('descText').focus();
   toast('Description cleared');
 });
@@ -1308,21 +1341,24 @@ async function recognizeWithGemini(file, setStatus){
   const b64 = canvas.toDataURL('image/jpeg', 0.85).split(',')[1];
 
   const prompt =
-    'You are reading a photo of a spare part (or its label) from a pharmacy automation machine ' +
-    '(Swisslog PillPick / BoxPicker). Identify the part for a spare-parts inventory.\n\n' +
-    'RETURN: one single line, fields separated by ", ", in this order when present:\n' +
-    'manufacturer, part/model number, what the part is, key ratings (voltage, current, size).\n\n' +
-    'INCLUDE ONLY information that identifies the part. Copy alphanumeric codes EXACTLY as printed.\n\n' +
-    'EXCLUDE completely — never output any of these:\n' +
-    '- text you cannot read with confidence (guessing is worse than omitting)\n' +
-    '- background objects, table, hands, packaging, other parts, anything not on the part itself\n' +
-    '- safety/warning text, certification marks (CE, RoHS, UL, WEEE), recycling symbols, patent notices\n' +
-    '- websites, phone numbers, addresses, QR/barcode digits, batch/serial/date codes\n' +
-    '- fragments, single stray letters, garbled character sequences\n' +
-    '- your own commentary, guesses, labels like "Manufacturer:", quotes, or line breaks\n\n' +
-    'If you are not confident about a field, leave that field out rather than inventing it.\n' +
-    'If nothing on the part can be read confidently, reply with exactly: NONE\n\n' +
-    'Example of a good answer: Siemens, 3RT1015-1BB41, contactor, 24VDC 3kW';
+    'This photo shows a Swisslog Healthcare spare-part label (PillPick / BoxPicker pharmacy automation).\n\n' +
+    'YOUR TASK: read ONLY the small printed DESCRIPTION text on the label.\n\n' +
+    'IGNORE COMPLETELY:\n' +
+    '- the barcode and the long digits printed next to it (the part number) — never output them\n' +
+    '- the "swisslog healthcare" logo and brand name\n' +
+    '- recycling / certification symbols (CE, RoHS, PAP, plastic codes), warnings, patents\n' +
+    '- the plastic bag, the part itself, the table, hands, background, other labels\n\n' +
+    'The description may be printed in Italian or English, often in small or faded ink.\n' +
+    'It typically names the component and its dimensions, e.g. "PIVOT BALL DOUBLE BEVEL SHOULDERS 4.9mm".\n\n' +
+    'Return ONLY a JSON object, no markdown, no code fences, with exactly these keys:\n' +
+    '{\n' +
+    '  "literal": "the description text exactly as you can read it, character for character",\n' +
+    '  "corrected": "the same description with faded/unclear characters restored, using your knowledge of standard mechanical component names and Swisslog terminology; keep the original language",\n' +
+    '  "english": "the corrected description translated into clear technical English (if it is already English, tidy it up)",\n' +
+    '  "confidence": "high | medium | low"\n' +
+    '}\n\n' +
+    'Rules: do not invent a description you cannot see. Keep dimensions and numbers exactly as printed.\n' +
+    'If no description text is readable at all, return {"literal":"","corrected":"","english":"","confidence":"low"}';
 
   setStatus('Reading label (Gemini AI)...');
   const url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + encodeURIComponent(key);
@@ -1351,9 +1387,66 @@ async function recognizeWithGemini(file, setStatus){
   const json = await res.json();
   const cand = (json.candidates && json.candidates[0]) || {};
   const parts = (cand.content && cand.content.parts) || [];
-  const text = parts.map(p=> p.text || '').join(' ').trim();
-  if(!text || /^NONE$/i.test(text)) return '';
-  return text;
+  let text = parts.map(p=> p.text || '').join(' ').trim();
+  if(!text) return null;
+
+  // strip ```json fences if the model added them
+  text = text.replace(/```json/gi, '').replace(/```/g, '').trim();
+  try{
+    const obj = JSON.parse(text);
+    if(!obj.literal && !obj.corrected && !obj.english) return null;
+    return obj;
+  }catch(e){
+    // not JSON — treat the whole reply as a literal reading
+    return { literal: text, corrected: '', english: '', confidence: 'low' };
+  }
+}
+
+/* ---------- Gemini suggestion card ---------- */
+function hideSuggestions(){
+  el('suggBox').style.display = 'none';
+  el('suggItems').innerHTML = '';
+}
+el('suggClose').addEventListener('click', hideSuggestions);
+
+function applySuggestion(textValue){
+  const cur = el('descText').value.trim();
+  el('descText').value = cur ? cur + ', ' + textValue : textValue;
+  finalTranscript = el('descText').value + ' ';
+  refreshClearDescBtn();
+  hideSuggestions();
+  toast('Added to the description ✓');
+}
+
+function showSuggestions(obj){
+  const items = [];
+  const conf = (obj.confidence || '').toLowerCase();
+  const confIcon = conf === 'high' ? '🟢' : conf === 'medium' ? '🟡' : '🔴';
+
+  if(obj.english)  items.push({ label: `English ${confIcon}`, text: obj.english, primary: true });
+  if(obj.corrected && obj.corrected !== obj.english) items.push({ label: 'Corrected (as printed)', text: obj.corrected });
+  if(obj.literal && obj.literal !== obj.corrected && obj.literal !== obj.english) items.push({ label: 'Literal reading', text: obj.literal });
+
+  if(items.length === 0){ hideSuggestions(); return false; }
+
+  const box = el('suggItems');
+  box.innerHTML = '';
+  items.forEach(it=>{
+    const d = document.createElement('div');
+    d.className = 'sugg-item';
+    d.innerHTML =
+      `<div class="sugg-label">${it.label}</div>` +
+      `<div class="sugg-text">${escapeHtml(it.text)}</div>` +
+      `<div class="sugg-actions"></div>`;
+    const btn = document.createElement('button');
+    btn.className = 'sugg-btn' + (it.primary ? ' use' : '');
+    btn.textContent = it.primary ? '✓ Use this' : 'Use this';
+    btn.addEventListener('click', ()=> applySuggestion(it.text));
+    d.querySelector('.sugg-actions').appendChild(btn);
+    box.appendChild(d);
+  });
+  el('suggBox').style.display = 'block';
+  return true;
 }
 
 // Google Cloud Vision: built for text in photos (product labels, signs).
@@ -1534,7 +1627,13 @@ async function runOcr(file){
 
     if(getEngine() === 'gemini'){
       try{
-        rawText = await recognizeWithGemini(file, setStatus);
+        const obj = await recognizeWithGemini(file, setStatus);
+        if(obj && showSuggestions(obj)){
+          toast('Gemini read the label — pick a version below');
+          return;   // user confirms; nothing is written automatically
+        }
+        toast('No readable description found on the label');
+        return;
       }catch(err){
         console.error('Gemini failed:', err);
         toast('Gemini failed (' + err.message + ') — falling back to offline');
@@ -1680,6 +1779,7 @@ function resetDownstream(){
   finalTranscript = '';
   el('descText').value = '';
   refreshClearDescBtn();
+  hideSuggestions();
   el('micStatus').textContent = '';
   el('qtyInput').value = 1;
   hideDupNotices();
