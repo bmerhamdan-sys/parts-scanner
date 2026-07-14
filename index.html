@@ -674,7 +674,7 @@
 <div class="toast" id="toast"></div>
 
 <script>
-const APP_VERSION = 'v4.4';
+const APP_VERSION = 'v4.5';
 document.getElementById('appVersion').textContent = APP_VERSION;
 
 /* ---------- theme switcher ---------- */
@@ -2326,16 +2326,28 @@ function exportWord(){
   <head>
     <meta charset="utf-8">
     <!--[if gte mso 9]>
-    <xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom></w:WordDocument></xml>
+    <xml>
+      <w:WordDocument>
+        <w:View>Print</w:View>
+        <w:Zoom>100</w:Zoom>
+        <w:DoNotOptimizeForBrowser/>
+      </w:WordDocument>
+    </xml>
     <![endif]-->
     <style>
-      /* A4 landscape so the wide table fits on one page */
-      @page {
-        size: 29.7cm 21cm;
+      /* A4 landscape so the wide table fits on one page.
+         Word only honours this when the @page rule is NAMED and the body div
+         references that same name via the "page" property. */
+      @page Section1 {
+        size: 841.9pt 595.3pt;                 /* A4 landscape */
         mso-page-orientation: landscape;
-        margin: 1.2cm 1.2cm 1.2cm 1.2cm;
+        margin: 1.0cm 1.0cm 1.0cm 1.0cm;
+        mso-header-margin: 0.5cm;
+        mso-footer-margin: 0.5cm;
+        mso-paper-source: 0;
       }
       div.Section1 { page: Section1; }
+      @page { size: 841.9pt 595.3pt; mso-page-orientation: landscape; margin: 1.0cm; }
       body{ font-family:'IBM Plex Sans','Segoe UI',Arial; direction:ltr; }
       h1{ font-size:20px; color:#111; margin-bottom:2px;}
       h2{ font-size:14px; color:#1c2230; border-bottom:2px solid #1c2230; padding-bottom:4px; margin:22px 0 8px;}
