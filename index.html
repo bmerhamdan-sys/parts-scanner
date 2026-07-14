@@ -282,6 +282,21 @@
 
   /* ---------- Description / voice ---------- */
   .desc-row{ display:flex; align-items:center; gap:10px; margin-bottom:10px; flex-wrap:wrap; }
+  .icon-btn{
+    width:52px; height:52px; padding:0; border-radius:14px;
+    font-size:22px; flex-shrink:0; background:var(--surface-2);
+  }
+  .desc-wrap{ position:relative; }
+  .clear-text-btn{
+    position:absolute; top:8px; right:8px; z-index:2;
+    width:30px; height:30px; border-radius:50%;
+    border:1px solid var(--border); background:var(--surface);
+    color:var(--text-faint); font-size:14px; font-weight:700; cursor:pointer;
+    display:none; align-items:center; justify-content:center; line-height:1;
+    box-shadow:var(--shadow-card);
+  }
+  .clear-text-btn:hover{ color:var(--laser); border-color:var(--laser); }
+  .clear-text-btn.show{ display:flex; }
   .mic-btn{ background:var(--surface-2); }
   .mic-btn.recording{
     background:var(--laser); border-color:var(--laser); color:#fff;
@@ -308,7 +323,7 @@
   .engine-pill button.active{ background:var(--blue); color:#fff; }
   .key-link{ background:none; border:none; color:var(--blue); font-size:11.5px; cursor:pointer; text-decoration:underline; padding:0; font-family:var(--font-ui); }
   .desc-textarea{
-    width:100%; min-height:88px; resize:vertical;
+    width:100%; min-height:88px; resize:vertical; padding-right:46px;
     background:var(--surface-2); border:1px solid var(--border); color:var(--text);
     border-radius:10px; padding:11px 12px; font-family:var(--font-ui); font-size:13.5px;
     line-height:1.7;
@@ -581,12 +596,15 @@
       <button class="key-link" id="btnApiKey">Set API key</button>
     </div>
     <div class="desc-row">
-      <button class="btn mic-btn" id="btnMic">🎙 Start voice recording</button>
-      <button class="btn" id="btnOcr">🔎 Extract text from image</button>
+      <button class="btn icon-btn mic-btn" id="btnMic" title="Dictate the description" aria-label="Dictate the description">🎙</button>
+      <button class="btn icon-btn" id="btnOcr" title="Extract text from a photo" aria-label="Extract text from a photo">📷</button>
       <span class="mic-status" id="micStatus"></span>
     </div>
     <input type="file" accept="image/*" capture="environment" id="fileOcr" style="display:none;">
-    <textarea id="descText" class="desc-textarea" placeholder="The part description will appear here... you can edit it freely"></textarea>
+    <div class="desc-wrap">
+      <textarea id="descText" class="desc-textarea" placeholder="The part description will appear here... you can edit it freely"></textarea>
+      <button class="clear-text-btn" id="btnClearDesc" title="Clear the description" aria-label="Clear the description">✕</button>
+    </div>
     <div class="hint" id="micHint"></div>
     <button class="btn btn-primary btn-wide save-btn" id="btnSave" disabled>💾 Save part &amp; continue to next</button>
   </div>
@@ -616,7 +634,7 @@
 <div class="toast" id="toast"></div>
 
 <script>
-const APP_VERSION = 'v3.5';
+const APP_VERSION = 'v3.6';
 document.getElementById('appVersion').textContent = APP_VERSION;
 
 /* ---------- theme switcher ---------- */
@@ -1132,6 +1150,7 @@ if(SpeechRecognitionAPI){
       }
     }
     el('descText').value = (finalTranscript + interim).trim();
+    refreshClearDescBtn();
   };
 
   recognition.onerror = (event)=>{
@@ -1166,7 +1185,8 @@ function startRecording(){
   finalTranscript = el('descText').value ? el('descText').value.trim() + ' ' : '';
   isRecording = true;
   el('btnMic').classList.add('recording');
-  el('btnMic').textContent = '⏹ Stop recording';
+  el('btnMic').textContent = '⏹';
+  el('btnMic').title = 'Stop recording';
   el('micStatus').textContent = 'Listening (English)...';
   try{ recognition.start(); }catch(e){}
 }
@@ -1175,10 +1195,26 @@ function stopRecording(){
   if(!recognition) { isRecording = false; return; }
   isRecording = false;
   el('btnMic').classList.remove('recording');
-  el('btnMic').textContent = '🎙 Start voice recording';
+  el('btnMic').textContent = '🎙';
+  el('btnMic').title = 'Dictate the description';
   el('micStatus').textContent = '';
   try{ recognition.stop(); }catch(e){}
 }
+
+/* ---------- clear the description text ---------- */
+function refreshClearDescBtn(){
+  el('btnClearDesc').classList.toggle('show', el('descText').value.trim().length > 0);
+}
+el('descText').addEventListener('input', refreshClearDescBtn);
+el('btnClearDesc').addEventListener('click', ()=>{
+  stopRecording();
+  el('descText').value = '';
+  finalTranscript = '';
+  current.desc = '';
+  refreshClearDescBtn();
+  el('descText').focus();
+  toast('Description cleared');
+});
 
 /* ---------- OCR engine selection (offline Tesseract vs Google Cloud Vision) ---------- */
 const ENGINE_KEY = 'partsScanner.ocrEngine';
@@ -1437,6 +1473,7 @@ async function runOcr(file){
       const current_val = el('descText').value.trim();
       el('descText').value = current_val ? current_val + ', ' + extracted : extracted;
       finalTranscript = el('descText').value + ' ';
+      refreshClearDescBtn();
       toast('Text extracted from image ✓');
     } else {
       toast('No readable text found — get closer, fill the frame with the text, avoid glare');
@@ -1538,6 +1575,7 @@ function resetDownstream(){
   stopRecording();
   finalTranscript = '';
   el('descText').value = '';
+  refreshClearDescBtn();
   el('micStatus').textContent = '';
   el('qtyInput').value = 1;
   hideDupNotices();
@@ -1639,6 +1677,7 @@ function startEdit(id){
 
   el('descText').value = current.desc;
   finalTranscript = current.desc ? current.desc + ' ' : '';
+  refreshClearDescBtn();
   el('qtyInput').value = e.qty;
   el('boxInput').value = e.box || 1;
 
