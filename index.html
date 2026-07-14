@@ -267,15 +267,11 @@
   /* ---------- Photo ---------- */
   .photo-row{ display:flex; gap:10px; align-items:center; }
   .photo-thumb{
-    width:84px; height:84px; border-radius:10px; overflow:hidden; flex-shrink:0;
-    background:var(--surface-2); border:1px dashed var(--border);
-    display:flex; align-items:center; justify-content:center; position:relative;
+    display:none; width:84px; height:84px; border-radius:10px; overflow:hidden; flex-shrink:0;
+    border:1px solid var(--green); position:relative;
   }
-  .photo-thumb img{ width:100%; height:100%; object-fit:cover; display:none; }
-  .photo-thumb .ph-ic{ font-size:24px; color:var(--text-faint); }
-  .photo-thumb.filled{ border-style:solid; border-color:var(--green); }
-  .photo-thumb.filled img{ display:block; }
-  .photo-thumb.filled .ph-ic{ display:none; }
+  .photo-thumb img{ width:100%; height:100%; object-fit:cover; }
+  .photo-thumb.filled{ display:block; }
   .photo-actions{ flex:1; display:flex; flex-direction:column; gap:8px; }
   .photo-actions .row{ display:flex; gap:8px; }
   .photo-remove{ font-size:11.5px; color:var(--laser); background:none; border:none; cursor:pointer; padding:2px; align-self:flex-start; font-family:var(--font-ui); }
@@ -590,7 +586,6 @@
     <div class="dup-note" id="dupNotePhoto"></div>
     <div class="photo-row">
       <div class="photo-thumb" id="photoThumb">
-        <span class="ph-ic">📷</span>
         <img id="photoImg" alt="">
       </div>
       <div class="photo-actions">
@@ -668,7 +663,7 @@
 <div class="toast" id="toast"></div>
 
 <script>
-const APP_VERSION = 'v4.1';
+const APP_VERSION = 'v4.2';
 document.getElementById('appVersion').textContent = APP_VERSION;
 
 /* ---------- theme switcher ---------- */
@@ -686,7 +681,7 @@ document.getElementById('btnTheme').addEventListener('click', ()=>{
   applyTheme(currentTheme);
 });
 
-const SUB_COMPONENTS = ["AutoBox","Autophial","Autophial+","Pickring","PillPicker","DrugNest"];
+const SUB_COMPONENTS = ["AutoBox","Autophial","Autophial+","Pickring","PillPicker","DrugNest","Not sure"];
 
 let entries = [];
 
@@ -707,11 +702,16 @@ function restoreEntries(){
     const arr = JSON.parse(raw);
     if(Array.isArray(arr)){
       entries = arr.filter(e=> e && e.barcode && Array.isArray(e.devices) && Array.isArray(e.subs));
-      entries.forEach(e=>{ if(!e.box) e.box = 1; });
+      entries.forEach(e=>{
+        if(!e.box) e.box = 1;
+        if(!e.descOriginal) e.descOriginal = '';
+        if(!e.descLang) e.descLang = '';
+        if(!e.descPhoto) e.descPhoto = null;
+      });
     }
   }catch(err){ console.error('restore failed:', err); }
 }
-let current = { barcode:null, devices:[], subs:[], conf:null, photo:null, desc:'' };
+let current = { barcode:null, devices:[], subs:[], conf:null, photo:null, desc:'', descOriginal:'', descLang:'', descPhoto:null };
 let html5QrCode = null;
 let cameraRunning = false;
 let recognition = null;
@@ -1022,6 +1022,7 @@ function setBarcode(code){
   cancelEdit();
   current.barcode = code;
   current.devices = []; current.subs = []; current.conf = null; current.photo = null; current.desc = '';
+  current.descOriginal = ''; current.descLang = ''; current.descPhoto = null;
   el('readout').style.display='flex';
   el('readoutVal').textContent = code;
   resetDownstream();
@@ -1057,7 +1058,7 @@ el('qaAdd').addEventListener('click', ()=>{
   persist();
   toast(`Added +${n} — quantity is now ${ex.qty} ✓`);
   // ready for the next part
-  current = { barcode:null, devices:[], subs:[], conf:null, photo:null, desc:'' };
+  current = { barcode:null, devices:[], subs:[], conf:null, photo:null, desc:'', descOriginal:'', descLang:'', descPhoto:null };
   el('readout').style.display='none';
   resetDownstream();
   lockCard('cardDevice');
@@ -1099,7 +1100,7 @@ function updateDupNotices(code){
 
 el('btnRescan').addEventListener('click', ()=>{
   cancelEdit();
-  current = { barcode:null, devices:[], subs:[], conf:null, photo:null, desc:'' };
+  current = { barcode:null, devices:[], subs:[], conf:null, photo:null, desc:'', descOriginal:'', descLang:'', descPhoto:null };
   el('readout').style.display='none';
   resetDownstream();
   lockCard('cardDevice');
@@ -1398,6 +1399,11 @@ async function recognizeWithGemini(file, setStatus){
   const canvas = await preprocessForOcr(file, /* raw */ true);
   const b64 = canvas.toDataURL('image/jpeg', 0.9).split(',')[1];
 
+  // keep a compressed copy of the very photo we send, for the report
+  try{
+    current.descPhoto = await compressImage(file, 640, 0.72);
+  }catch(e){ /* non-fatal */ }
+
   const prompt =
     'This photo shows a Swisslog Healthcare spare-part label (pharmacy automation: PillPick / BoxPicker / AutoPhial).\n\n' +
     'YOUR TASK: read ONLY the small printed DESCRIPTION line of text on the label.\n\n' +
@@ -1474,6 +1480,15 @@ function applySuggestion(textValue){
 }
 
 function showSuggestions(obj){
+  // remember the original-language description (Italian labels keep their own column)
+  if(obj.language && /italian/i.test(obj.language)){
+    current.descOriginal = (obj.corrected || obj.literal || '').trim();
+    current.descLang = 'Italian';
+  } else {
+    current.descOriginal = '';
+    current.descLang = '';
+  }
+
   const items = [];
   const conf = (obj.confidence || '').toLowerCase();
   const confIcon = conf === 'high' ? '🟢' : conf === 'medium' ? '🟡' : '🔴';
@@ -1919,7 +1934,8 @@ function startEdit(id){
   stopRecording();
 
   editingId = id;
-  current = { barcode:e.barcode, devices:[...e.devices], subs:[...e.subs], conf:e.conf, photo:e.photo, desc:e.desc || '' };
+  current = { barcode:e.barcode, devices:[...e.devices], subs:[...e.subs], conf:e.conf, photo:e.photo,
+              desc:e.desc || '', descOriginal:e.descOriginal || '', descLang:e.descLang || '', descPhoto:e.descPhoto || null };
 
   el('readout').style.display='flex';
   el('readoutVal').textContent = e.barcode;
@@ -1975,6 +1991,9 @@ el('btnSave').addEventListener('click', ()=>{
       e.conf = current.conf;
       e.photo = current.photo;
       e.desc = current.desc;
+      e.descOriginal = current.descOriginal || '';
+      e.descLang = current.descLang || '';
+      e.descPhoto = current.descPhoto || null;
       e.qty = qty;               // when editing, the field is the absolute quantity
       e.box = getBox();
       e.lastTime = nowStr;
@@ -1984,7 +2003,7 @@ el('btnSave').addEventListener('click', ()=>{
     persist();
     toast('Updated ✓');
 
-    current = { barcode:null, devices:[], subs:[], conf:null, photo:null, desc:'' };
+    current = { barcode:null, devices:[], subs:[], conf:null, photo:null, desc:'', descOriginal:'', descLang:'', descPhoto:null };
     el('readout').style.display='none';
     resetDownstream();
     lockCard('cardDevice');
@@ -2000,6 +2019,11 @@ el('btnSave').addEventListener('click', ()=>{
     const sameClassification = sameSet(existing.devices, current.devices) && sameSet(existing.subs, current.subs);
     if(!sameClassification){ existing.mismatch = true; }
     if(!existing.photo && current.photo){ existing.photo = current.photo; }
+    if(!existing.descPhoto && current.descPhoto){ existing.descPhoto = current.descPhoto; }
+    if(!existing.descOriginal && current.descOriginal){
+      existing.descOriginal = current.descOriginal;
+      existing.descLang = current.descLang;
+    }
     if(current.desc){ existing.desc = existing.desc ? existing.desc + ' | ' + current.desc : current.desc; }
     renderHistory();
     persist();
@@ -2013,6 +2037,9 @@ el('btnSave').addEventListener('click', ()=>{
       conf: current.conf,
       photo: current.photo,
       desc: current.desc,
+      descOriginal: current.descOriginal || '',
+      descLang: current.descLang || '',
+      descPhoto: current.descPhoto || null,
       qty: qty,
       box: getBox(),
       time: nowStr,
@@ -2025,7 +2052,7 @@ el('btnSave').addEventListener('click', ()=>{
     toast('Saved ✓');
   }
 
-  current = { barcode:null, devices:[], subs:[], conf:null, photo:null, desc:'' };
+  current = { barcode:null, devices:[], subs:[], conf:null, photo:null, desc:'', descOriginal:'', descLang:'', descPhoto:null };
   el('readout').style.display='none';
   resetDownstream();
   lockCard('cardDevice');
@@ -2146,11 +2173,15 @@ function exportExcel(){
     'Logged at': e.time,
     'Last scan': e.lastTime,
     'Has photo': e.photo ? 'Yes' : 'No',
-    'Classification mismatch': e.mismatch ? 'Yes' : ''
+    'Classification mismatch': e.mismatch ? 'Yes' : '',
+    'Original description': e.descOriginal || '',
+    'Original language': e.descLang || '',
+    'Description photo': e.descPhoto ? 'Yes (see Word report)' : ''
   }));
   const ws = XLSX.utils.json_to_sheet(rows);
   ws['!cols'] = [
-    {wch:4},{wch:10},{wch:24},{wch:45},{wch:6},{wch:6},{wch:32},{wch:11},{wch:22},{wch:22},{wch:10},{wch:20}
+    {wch:4},{wch:10},{wch:24},{wch:45},{wch:6},{wch:6},{wch:32},{wch:11},{wch:22},{wch:22},{wch:10},{wch:20},
+    {wch:45},{wch:14},{wch:20}
   ];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Spare Parts');
@@ -2185,6 +2216,22 @@ function exportWord(){
     }
     const mismatchNote = e.mismatch ? '<br><span style="color:#b00; font-size:10px;">⚠ Different classification on a later scan</span>' : '';
     const descCell = e.desc ? escapeHtml(e.desc) : `<span style="color:#aaa;">—</span>`;
+
+    const origCell = e.descOriginal
+      ? escapeHtml(e.descOriginal) + (e.descLang ? `<br><span style="color:#888; font-size:10px;">(${escapeHtml(e.descLang)})</span>` : '')
+      : `<span style="color:#aaa;">—</span>`;
+
+    let descPhotoCell = `<span style="color:#aaa; font-size:11px;">—</span>`;
+    if(e.descPhoto){
+      const m2 = e.descPhoto.match(/^data:(image\/[a-z0-9.+-]+);base64,(.+)$/i);
+      if(m2){
+        const ext2 = m2[1].toLowerCase() === 'image/png' ? 'png' : 'jpg';
+        const loc2 = `file:///C:/parts/desc_photo_${images.length}.${ext2}`;
+        images.push({ loc: loc2, type:m2[1], b64:m2[2] });
+        descPhotoCell = `<img src="${loc2}" width="90" height="90" style="border:1px solid #ccc;">`;
+      }
+    }
+
     return `
       <tr>
         <td style="text-align:center;">${i+1}</td>
@@ -2196,6 +2243,8 @@ function exportWord(){
         <td style="text-align:center;">${deviceLabel}${mismatchNote}</td>
         <td style="text-align:center; color:${e.conf==='High' ? '#1a7a4a' : '#a86a00'}; font-weight:bold;">${e.conf}</td>
         <td style="text-align:center; font-size:11px; color:#555;">${e.qty>1 ? e.time + '<br>Last: ' + e.lastTime : e.time}</td>
+        <td style="text-align:left; font-size:11.5px;">${origCell}</td>
+        <td style="text-align:center;">${descPhotoCell}</td>
       </tr>`;
   }
 
@@ -2211,6 +2260,8 @@ function exportWord(){
           <th>Machine / Component</th>
           <th>Confidence</th>
           <th>Logged at</th>
+          <th>Original description</th>
+          <th>Description photo</th>
         </tr>
       </thead>`;
 
