@@ -292,6 +292,21 @@
     50%{ box-shadow:0 0 0 8px transparent; }
   }
   .mic-status{ font-size:12px; color:var(--text-faint); font-family:var(--font-mono); }
+  .engine-bar{
+    display:flex; align-items:center; gap:8px; margin-bottom:10px; flex-wrap:wrap;
+    font-size:11.5px; color:var(--text-dim);
+  }
+  .engine-pill{
+    display:flex; gap:4px; background:var(--surface-2); border:1px solid var(--border);
+    border-radius:999px; padding:3px;
+  }
+  .engine-pill button{
+    border:none; background:transparent; color:var(--text-dim); cursor:pointer;
+    font-family:var(--font-ui); font-size:11.5px; font-weight:600;
+    padding:6px 12px; border-radius:999px;
+  }
+  .engine-pill button.active{ background:var(--blue); color:#fff; }
+  .key-link{ background:none; border:none; color:var(--blue); font-size:11.5px; cursor:pointer; text-decoration:underline; padding:0; font-family:var(--font-ui); }
   .desc-textarea{
     width:100%; min-height:88px; resize:vertical;
     background:var(--surface-2); border:1px solid var(--border); color:var(--text);
@@ -557,6 +572,14 @@
       <div class="step-title">Part description</div>
     </div>
     <div class="dup-note" id="dupNoteDesc"></div>
+    <div class="engine-bar">
+      <span>Text engine:</span>
+      <div class="engine-pill">
+        <button id="engTess" class="active">Offline</button>
+        <button id="engCloud">Google Vision</button>
+      </div>
+      <button class="key-link" id="btnApiKey">Set API key</button>
+    </div>
     <div class="desc-row">
       <button class="btn mic-btn" id="btnMic">🎙 Start voice recording</button>
       <button class="btn" id="btnOcr">🔎 Extract text from image</button>
@@ -593,7 +616,7 @@
 <div class="toast" id="toast"></div>
 
 <script>
-const APP_VERSION = 'v3.4';
+const APP_VERSION = 'v3.5';
 document.getElementById('appVersion').textContent = APP_VERSION;
 
 /* ---------- theme switcher ---------- */
@@ -1157,6 +1180,91 @@ function stopRecording(){
   try{ recognition.stop(); }catch(e){}
 }
 
+/* ---------- OCR engine selection (offline Tesseract vs Google Cloud Vision) ---------- */
+const ENGINE_KEY = 'partsScanner.ocrEngine';
+const APIKEY_KEY = 'partsScanner.visionKey';
+
+function getEngine(){
+  try{ return localStorage.getItem(ENGINE_KEY) || 'tesseract'; }catch(e){ return 'tesseract'; }
+}
+function getApiKey(){
+  try{ return localStorage.getItem(APIKEY_KEY) || ''; }catch(e){ return ''; }
+}
+function setEngine(name){
+  if(name === 'vision' && !getApiKey()){
+    toast('Add your Google Vision API key first');
+    promptApiKey();
+    return;
+  }
+  try{ localStorage.setItem(ENGINE_KEY, name); }catch(e){}
+  renderEngineUI();
+}
+function renderEngineUI(){
+  const eng = getEngine();
+  el('engTess').classList.toggle('active', eng === 'tesseract');
+  el('engCloud').classList.toggle('active', eng === 'vision');
+  el('btnApiKey').textContent = getApiKey() ? 'Change API key' : 'Set API key';
+}
+function promptApiKey(){
+  const cur = getApiKey();
+  const k = prompt(
+    'Paste your Google Cloud Vision API key.\n\n' +
+    'It is stored only on this device and sent directly to Google.\n' +
+    'Leave empty to remove it.',
+    cur);
+  if(k === null) return;
+  const key = k.trim();
+  try{
+    if(key){ localStorage.setItem(APIKEY_KEY, key); toast('API key saved'); }
+    else {
+      localStorage.removeItem(APIKEY_KEY);
+      localStorage.setItem(ENGINE_KEY, 'tesseract');
+      toast('API key removed — back to the offline engine');
+    }
+  }catch(e){ toast('Could not save the key on this device'); }
+  renderEngineUI();
+}
+el('engTess').addEventListener('click', ()=> setEngine('tesseract'));
+el('engCloud').addEventListener('click', ()=> setEngine('vision'));
+el('btnApiKey').addEventListener('click', promptApiKey);
+renderEngineUI();
+
+// Google Cloud Vision: built for text in photos (product labels, signs).
+// Handles rotation, skew and poor lighting server-side.
+async function recognizeWithVision(file, setStatus){
+  const key = getApiKey();
+  if(!key) throw new Error('No API key');
+  setStatus('Preparing the image...');
+  const canvas = await preprocessForOcr(file, /* raw */ true);
+  const b64 = canvas.toDataURL('image/jpeg', 0.85).split(',')[1];
+
+  setStatus('Reading text (Google Vision)...');
+  const res = await fetch('https://vision.googleapis.com/v1/images:annotate?key=' + encodeURIComponent(key), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      requests: [{
+        image: { content: b64 },
+        features: [{ type: 'TEXT_DETECTION' }],
+        imageContext: { languageHints: ['en', 'it'] }
+      }]
+    })
+  });
+
+  if(!res.ok){
+    let msg = 'HTTP ' + res.status;
+    try{
+      const err = await res.json();
+      msg = (err.error && err.error.message) || msg;
+    }catch(e){}
+    throw new Error(msg);
+  }
+  const json = await res.json();
+  const r = (json.responses && json.responses[0]) || {};
+  if(r.error && r.error.message) throw new Error(r.error.message);
+  return (r.fullTextAnnotation && r.fullTextAnnotation.text) || '';
+}
+
 /* ---------- OCR: extract text from an image (English only) ---------- */
 let ocrRunning = false;
 let ocrWorker = null; // cached between runs (first run downloads the engine)
@@ -1184,7 +1292,7 @@ async function getOcrWorker(onProgress){
 
 // Preprocess: resize to a good OCR resolution, grayscale, then Otsu binarization
 // (falls back to contrast-stretched grayscale if the threshold result is degenerate).
-function preprocessForOcr(file){
+function preprocessForOcr(file, raw){
   return new Promise((resolve, reject)=>{
     const reader = new FileReader();
     reader.onload = ()=>{
@@ -1202,6 +1310,8 @@ function preprocessForOcr(file){
         const ctx = canvas.getContext('2d');
         ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(img, 0, 0, w, h);
+
+        if(raw){ resolve(canvas); return; }   // Vision reads the original photo better
 
         const imgData = ctx.getImageData(0, 0, w, h);
         const d = imgData.data;
@@ -1292,19 +1402,37 @@ async function runOcr(file){
   const setStatus = m=>{ el('micStatus').textContent = m; };
   setStatus('Preparing the image...');
   try{
-    const canvas = await preprocessForOcr(file);
-    const worker = await getOcrWorker(setStatus);
-    setStatus('Extracting text...');
-    let { data } = await worker.recognize(canvas);
-    // Low confidence? retry once with automatic page segmentation, keep the better read.
-    if((data.confidence || 0) < 55){
-      setStatus('Low confidence — retrying with a different mode...');
-      await worker.setParameters({ tessedit_pageseg_mode: '3' });
-      const second = await worker.recognize(canvas);
-      if((second.data.confidence || 0) > (data.confidence || 0)) data = second.data;
-      await worker.setParameters({ tessedit_pageseg_mode: '6' });
+    let rawText = '';
+
+    if(getEngine() === 'vision'){
+      try{
+        rawText = await recognizeWithVision(file, setStatus);
+      }catch(err){
+        console.error('Vision failed:', err);
+        toast('Google Vision failed (' + err.message + ') — falling back to offline');
+        const canvas = await preprocessForOcr(file);
+        const worker = await getOcrWorker(setStatus);
+        setStatus('Extracting text...');
+        const { data } = await worker.recognize(canvas);
+        rawText = data.text || '';
+      }
+    } else {
+      const canvas = await preprocessForOcr(file);
+      const worker = await getOcrWorker(setStatus);
+      setStatus('Extracting text...');
+      let { data } = await worker.recognize(canvas);
+      // Low confidence? retry once with automatic page segmentation, keep the better read.
+      if((data.confidence || 0) < 55){
+        setStatus('Low confidence — retrying with a different mode...');
+        await worker.setParameters({ tessedit_pageseg_mode: '3' });
+        const second = await worker.recognize(canvas);
+        if((second.data.confidence || 0) > (data.confidence || 0)) data = second.data;
+        await worker.setParameters({ tessedit_pageseg_mode: '6' });
+      }
+      rawText = data.text || '';
     }
-    const extracted = cleanOcrText(data.text || '');
+
+    const extracted = cleanOcrText(rawText);
     if(extracted){
       const current_val = el('descText').value.trim();
       el('descText').value = current_val ? current_val + ', ' + extracted : extracted;
@@ -1680,6 +1808,10 @@ el('btnClear').addEventListener('click', ()=>{
     entries = [];
     renderHistory();
     persist();
+    // start a fresh inventory: back to box 1
+    el('boxInput').value = 1;
+    try{ localStorage.removeItem(BOX_KEY); }catch(e){}
+    toast('Cleared — storage box reset to 1');
   }
 });
 
