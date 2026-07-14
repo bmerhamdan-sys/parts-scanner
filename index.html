@@ -234,6 +234,8 @@
   .choice-btn.selected{ border-color:var(--blue); background:rgba(44,95,216,0.08); box-shadow:0 0 0 1px var(--blue) inset; }
   .choice-btn.selected.device-pill{ border-color:var(--blue); }
   .choice-btn.sub-btn.selected{ border-color:var(--amber); background:rgba(217,127,0,0.09); box-shadow:0 0 0 1px var(--amber) inset;}
+  /* "Not sure" spans the whole row, above the specific components */
+  .choice-btn.sub-btn.wide{ grid-column:1 / -1; }
 
   .conf-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
   .conf-btn{
@@ -421,6 +423,15 @@
     font-size:12.5px; line-height:1.7; color:var(--text);
   }
   .dup-note b{ color:var(--amber); }
+  .dup-box{
+    display:inline-block; background:var(--amber); color:#fff;
+    border-radius:8px; padding:3px 10px; font-weight:700; font-size:14px;
+    font-family:var(--font-mono); margin:0 2px;
+  }
+  .dup-loc{
+    background:var(--surface); border:1px dashed var(--amber); border-radius:10px;
+    padding:10px 12px; margin:10px 0; text-align:center; font-size:13px; line-height:1.8;
+  }
   .dup-note img{ width:56px; height:56px; border-radius:8px; margin-top:6px; object-fit:cover; border:1px solid var(--border); display:block; }
   .qa-row{ display:flex; align-items:center; gap:9px; margin-top:10px; }
   .qa-input{
@@ -663,7 +674,7 @@
 <div class="toast" id="toast"></div>
 
 <script>
-const APP_VERSION = 'v4.2';
+const APP_VERSION = 'v4.4';
 document.getElementById('appVersion').textContent = APP_VERSION;
 
 /* ---------- theme switcher ---------- */
@@ -681,7 +692,7 @@ document.getElementById('btnTheme').addEventListener('click', ()=>{
   applyTheme(currentTheme);
 });
 
-const SUB_COMPONENTS = ["AutoBox","Autophial","Autophial+","Pickring","PillPicker","DrugNest","Not sure"];
+const SUB_COMPONENTS = ["Not sure","AutoBox","Autophial","Autophial+","Pickring","PillPicker","DrugNest"];
 
 let entries = [];
 
@@ -734,7 +745,7 @@ function buildSubGrid(){
   g.innerHTML = '';
   SUB_COMPONENTS.forEach(name=>{
     const d = document.createElement('div');
-    d.className = 'choice-btn sub-btn';
+    d.className = 'choice-btn sub-btn' + (name === 'Not sure' ? ' wide' : '');
     d.dataset.sub = name;
     d.tabIndex = 0;
     d.innerHTML = `<span class="lb">${name}</span>`;
@@ -1052,11 +1063,12 @@ el('qaAdd').addEventListener('click', ()=>{
   const ex = entries.find(e=> e.id === dupTargetId);
   if(!ex) return;
   const n = getQaQty();
+  const exBox = ex.box || 1;
   ex.qty += n;
   ex.lastTime = new Date().toLocaleString('en-GB', { hour12:true });
   renderHistory();
   persist();
-  toast(`Added +${n} — quantity is now ${ex.qty} ✓`);
+  toast(`+${n} added to box ${exBox} — quantity is now ${ex.qty} ✓`);
   // ready for the next part
   current = { barcode:null, devices:[], subs:[], conf:null, photo:null, desc:'', descOriginal:'', descLang:'', descPhoto:null };
   el('readout').style.display='none';
@@ -1074,17 +1086,20 @@ function updateDupNotices(code){
   // quick-add panel under the barcode readout
   dupTargetId = ex.id;
   el('qaInput').value = 1;
+  const exBox = ex.box || 1;
   el('dupQuickInfo').innerHTML =
-    `⚠ <b>Already logged</b> — qty <b>${ex.qty}</b> · ${escapeHtml(entryDeviceLabel(ex))} · Confidence: ${ex.conf}.<br>` +
-    `Just adding more of the same part? Set the number and tap the button:`;
+    `⚠ <b>Already logged</b> — qty <b>${ex.qty}</b> · ${escapeHtml(entryDeviceLabel(ex))} · Confidence: ${ex.conf}` +
+    `<div class="dup-loc">📦 This part is stored in box <span class="dup-box">${exBox}</span><br>` +
+    `<span style="color:var(--text-dim); font-size:12px;">Put the new pieces in the same box, then add the quantity here — that keeps every unit of this part in one place.</span></div>` +
+    `How many more did you find?`;
   el('dupQuickAdd').style.display='block';
 
   const pn = el('dupNotePhoto');
   if(ex.photo){
-    pn.innerHTML = `⚠ <b>Already logged</b> (qty ${ex.qty}) and it already has a photo — <b>skip this step</b>.
+    pn.innerHTML = `⚠ <b>Already logged</b> (qty ${ex.qty}, 📦 box ${exBox}) and it already has a photo — <b>skip this step</b>.
       <img src="${ex.photo}" alt="">`;
   } else {
-    pn.innerHTML = `⚠ <b>Already logged</b> (qty ${ex.qty}) but has <b>no photo yet</b> — you can add one now.`;
+    pn.innerHTML = `⚠ <b>Already logged</b> (qty ${ex.qty}, 📦 box ${exBox}) but has <b>no photo yet</b> — you can add one now.`;
   }
   pn.style.display='block';
 
@@ -1816,6 +1831,15 @@ function selectSub(name){
   document.querySelectorAll('#subGrid .choice-btn').forEach(b=>{
     b.classList.toggle('selected', current.subs.includes(b.dataset.sub));
   });
+
+  // "Not sure" means exactly that — confidence is Low by definition.
+  if(current.subs.includes('Not sure')){
+    current.conf = 'Low';
+    unlockCard('cardConf');
+    updateConfSelection();
+    toast('Marked as Low confidence');
+  }
+
   renumber();
   updateSaveState();
 }
@@ -2013,8 +2037,18 @@ el('btnSave').addEventListener('click', ()=>{
   const existing = entries.find(e => e.barcode === current.barcode);
 
   if(existing){
+    const exBox = existing.box || 1;
+    const enteredBox = getBox();
     existing.qty += qty;
     existing.lastTime = nowStr;
+    // The part keeps ONE storage location: never split the same part across boxes.
+    if(enteredBox !== exBox){
+      alert('This part is already stored in box ' + exBox + '.\n\n' +
+            'The ' + qty + ' new piece(s) were added to box ' + exBox + ' — not box ' + enteredBox + '.\n\n' +
+            'Please place them physically in box ' + exBox + ' so every unit of this part stays together.');
+      el('boxInput').value = exBox;
+      saveLastBox();
+    }
     // keep the original device/component/confidence, but flag if this scan disagreed
     const sameClassification = sameSet(existing.devices, current.devices) && sameSet(existing.subs, current.subs);
     if(!sameClassification){ existing.mismatch = true; }
@@ -2027,7 +2061,7 @@ el('btnSave').addEventListener('click', ()=>{
     if(current.desc){ existing.desc = existing.desc ? existing.desc + ' | ' + current.desc : current.desc; }
     renderHistory();
     persist();
-    toast(`Barcode already logged — quantity is now ${existing.qty}`);
+    toast(`Added to box ${existing.box || 1} — quantity is now ${existing.qty}`);
   } else {
     entries.push({
       id: Date.now(),
@@ -2295,18 +2329,27 @@ function exportWord(){
     <xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom></w:WordDocument></xml>
     <![endif]-->
     <style>
+      /* A4 landscape so the wide table fits on one page */
+      @page {
+        size: 29.7cm 21cm;
+        mso-page-orientation: landscape;
+        margin: 1.2cm 1.2cm 1.2cm 1.2cm;
+      }
+      div.Section1 { page: Section1; }
       body{ font-family:'IBM Plex Sans','Segoe UI',Arial; direction:ltr; }
       h1{ font-size:20px; color:#111; margin-bottom:2px;}
       h2{ font-size:14px; color:#1c2230; border-bottom:2px solid #1c2230; padding-bottom:4px; margin:22px 0 8px;}
       .sub{ color:#666; font-size:12px; margin-bottom:6px;}
       table{ border-collapse:collapse; width:100%; }
-      th{ background:#1c2230; color:#fff; padding:8px 6px; font-size:12px; text-align:center; }
-      td{ border:1px solid #ccc; padding:7px 6px; font-size:12px; }
+      th{ background:#1c2230; color:#fff; padding:6px 4px; font-size:10.5px; text-align:center; }
+      td{ border:1px solid #ccc; padding:5px 4px; font-size:10.5px; }
+      table{ table-layout:fixed; word-wrap:break-word; }
       .summary{ margin-top:18px; font-size:12px; color:#333; }
       .summary b{ color:#111; }
     </style>
   </head>
   <body dir="ltr">
+    <div class="Section1">
     <h1>Spare Parts Inventory Report — BoxPicker / PillPick</h1>
     <div class="sub">Exported: ${new Date().toLocaleString('en-GB')} &nbsp;|&nbsp; Distinct items: ${entries.length} &nbsp;|&nbsp; Total parts (by quantity): ${totalQty}</div>
     ${sections}
@@ -2316,6 +2359,7 @@ function exportWord(){
       <b>Shared (both):</b> ${sharedCount} parts &nbsp;|&nbsp;
       <b>High confidence:</b> ${high} items &nbsp;|&nbsp;
       <b>Low confidence:</b> ${low} items
+    </div>
     </div>
   </body>
   </html>`;
