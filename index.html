@@ -750,7 +750,7 @@
 <script>
 const el = id => document.getElementById(id);
 
-const APP_VERSION = 'v6.0';
+const APP_VERSION = 'v6.2';
 document.getElementById('appVersion').textContent = APP_VERSION;
 
 /* ---------- slide-in menu ---------- */
@@ -2458,8 +2458,8 @@ function exportExcel(){
   const ws = XLSX.utils.json_to_sheet(rows, { origin: 'A3' });
   // project / technician banner in the first rows
   XLSX.utils.sheet_add_aoa(ws, [
-    ['Spare Parts Inventory' + (getProject() ? ' — ' + getProject() : '') + (getTech() ? '  |  Technician: ' + getTech() : '')],
-    ['Exported: ' + new Date().toLocaleString('en-GB')]
+    ['Spare Parts Inventory' + (getProject() ? ' - ' + getProject() : '')],
+    [(getTech() ? 'Prepared by: ' + getTech() : '') + '   Exported: ' + new Date().toLocaleString('en-GB')]
   ], { origin: 'A1' });
   ws['!cols'] = [
     {wch:4},{wch:10},{wch:24},{wch:45},{wch:6},{wch:6},{wch:32},{wch:11},{wch:22},{wch:22},{wch:10},{wch:20},
@@ -2655,7 +2655,9 @@ function exportWord(){
       div.Section1 { page: Section1; }
       @page { size: 841.9pt 595.3pt; mso-page-orientation: landscape; margin: 1.0cm; }
       body{ font-family:'IBM Plex Sans','Segoe UI',Arial; direction:ltr; }
-      h1{ font-size:20px; color:#111; margin-bottom:2px;}
+      h1{ font-size:26px; color:#111; margin:0 0 2px; }
+      .subttl{ font-size:13px; color:#555; margin-bottom:4px; }
+      .prepby{ font-size:13px; color:#111; margin-bottom:4px; }
       h2{ font-size:14px; color:#1c2230; border-bottom:2px solid #1c2230; padding-bottom:4px; margin:22px 0 8px;}
       .sub{ color:#666; font-size:12px; margin-bottom:6px;}
       table{ border-collapse:collapse; width:100%; }
@@ -2681,8 +2683,8 @@ function exportWord(){
   </head>
   <body dir="ltr">
     <div class="Section1">
-    <h1>Spare Parts Inventory Report — BoxPicker / PillPick</h1>
-    ${(getProject() || getTech()) ? `<div class="sub" style="font-size:13px; color:#111;">${getProject() ? '<b>Site/Project:</b> ' + escapeHtml(getProject()) : ''}${getProject() && getTech() ? ' &nbsp;|&nbsp; ' : ''}${getTech() ? '<b>Technician:</b> ' + escapeHtml(getTech()) : ''}</div>` : ''}
+    <h1>Spare Parts Inventory${getProject() ? ' - ' + escapeHtml(getProject()) : ''}</h1>
+    ${getTech() ? `<div class="prepby">Prepared by: ${escapeHtml(getTech())}</div>` : ''}
     <div class="sub">Exported: ${new Date().toLocaleString('en-GB')} &nbsp;|&nbsp; Distinct items: ${entries.length} &nbsp;|&nbsp; Total parts (by quantity): ${totalQty}</div>
     ${sections}
     <div class="summary">
