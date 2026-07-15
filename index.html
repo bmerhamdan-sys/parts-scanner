@@ -361,6 +361,12 @@
   .engine-pill button.active{ background:var(--blue); color:#fff; }
   .key-link{ background:none; border:none; color:var(--blue); font-size:11.5px; cursor:pointer; text-decoration:underline; padding:0; font-family:var(--font-ui); }
 
+  .diag-box{
+    display:none; margin-bottom:12px; border:1px solid var(--laser);
+    background:rgba(224,52,36,0.06); border-radius:12px; padding:11px 12px;
+    font-size:12px; line-height:1.7; color:var(--text); word-break:break-word;
+  }
+  .diag-box b{ color:var(--laser); }
   .sugg-box{
     display:none; border:1px solid var(--blue); background:rgba(44,95,216,0.06);
     border-radius:12px; padding:12px; margin-bottom:12px;
@@ -708,6 +714,7 @@
       <span class="mic-status" id="micStatus"></span>
     </div>
     <input type="file" accept="image/*" capture="environment" id="fileOcr" style="display:none;">
+    <div class="diag-box" id="diagBox"></div>
     <div class="sugg-box" id="suggBox">
       <div class="sugg-head">
         <span>🤖 Gemini reading — tap to use</span>
@@ -750,7 +757,7 @@
 <script>
 const el = id => document.getElementById(id);
 
-const APP_VERSION = 'v6.7';
+const APP_VERSION = 'v6.8';
 document.getElementById('appVersion').textContent = APP_VERSION;
 
 /* ---------- slide-in menu ---------- */
@@ -1832,7 +1839,16 @@ el('fileOcr').addEventListener('change', e=>{
   el('fileOcr').value = '';
 });
 
+function showDiag(html){
+  const d = el('diagBox');
+  if(!html){ d.style.display='none'; d.innerHTML=''; return; }
+  d.innerHTML = html;
+  d.style.display = 'block';
+  d.scrollIntoView({ behavior:'smooth', block:'nearest' });
+}
+
 async function runOcr(file){
+  showDiag('');
   ocrRunning = true;
   el('btnOcr').disabled = true;
   const setStatus = m=>{ el('micStatus').textContent = m; };
@@ -1853,60 +1869,33 @@ async function runOcr(file){
         console.error('Gemini failed:', err);
         el('micStatus').textContent = '';
 
-        // Rate limit (too many scans in a short time) — auto-wait and retry ONCE,
-        // which keeps Gemini quality without asking you anything.
-        if(err.rateLimited){
-          let ok = false;
-          for(let s = 8; s >= 1 && !ok; s--){
-            setStatus('Rate limit — auto-retry in ' + s + 's...');
-            await new Promise(r=> setTimeout(r, 1000));
-          }
-          try{
-            const obj2 = await recognizeWithGemini(file, setStatus);
-            if(obj2 && showSuggestions(obj2)){
-              toast('Gemini read the label — pick a version below');
-              return;
-            }
-            toast('No readable description found — move closer to the printed text');
-            return;
-          }catch(err2){
-            const stillRate = err2.rateLimited;
-            const msg = stillRate
-              ? 'Gemini quota / rate limit hit again.\n\n' +
-                'You are scanning faster than the per-minute allowance, or the daily quota ' +
-                'is reached.\n\nReason from Google: ' + (err2.message || 'rate limited') + '\n\n' +
-                'Options:\n• Wait ~30–60 seconds, then tap the camera.\n' +
-                '• Or switch the engine to "Vision" for now.\n\nNothing was written.'
-              : 'Gemini error: ' + (err2.message || 'unknown') + '\n\nNothing was written.';
-            alert(msg);
-            return;
-          }
-        }
-
-        const busy = err.overloaded ||
-          /overload|high demand|try again|unavailable|busy|429|503/i.test(err.message || '');
+        const reason = err.message || 'unknown error';
+        const busy = err.overloaded || err.rateLimited ||
+          /overload|high demand|try again|unavailable|busy|429|503|quota|resource[_ ]?exhausted/i.test(reason);
 
         if(busy){
-          const useVision = getApiKey() && confirm(
-            'Gemini servers are busy right now (temporary).\n\n' +
-            'Reason from Google: ' + (err.message || 'busy') + '\n\n' +
-            'OK  = read it with Google Vision now (faster, raw text)\n' +
-            'Cancel = keep Gemini quality; wait a few seconds and tap the camera again');
-          if(useVision){
-            try{
-              rawText = await recognizeWithVision(file, setStatus);
-            }catch(err2){
-              alert('Vision also failed.\n\nError: ' + err2.message);
+          setStatus('Gemini busy — retrying in 5s...');
+          await new Promise(r=> setTimeout(r, 5000));
+          try{
+            const obj2 = await recognizeWithGemini(file, setStatus);
+            if(obj2 && showSuggestions(obj2)){ toast('Gemini read the label ✓'); return; }
+            toast('No readable description — move closer to the text'); return;
+          }catch(err2){
+            if(getApiKey()){
+              showDiag('⚠ <b>Gemini is busy</b>, so this reading came from <b>Google Vision</b> (raw text — no translation).<br><span style="color:var(--text-faint)">Reason from Google: ' + escapeHtml(err2.message || reason) + '</span>');
+              try{
+                rawText = await recognizeWithVision(file, setStatus);
+              }catch(err3){
+                showDiag('❌ <b>Both Gemini and Vision failed.</b><br>Gemini: ' + escapeHtml(err2.message||reason) + '<br>Vision: ' + escapeHtml(err3.message||'') + '<br><br>Nothing was written. Try again shortly, or type it in.');
+                return;
+              }
+            } else {
+              showDiag('⚠ <b>Gemini servers are busy</b> (temporary — not your key/photo).<br><span style="color:var(--text-faint)">Reason from Google: ' + escapeHtml(err2.message||reason) + '</span><br><br>Wait ~30s and tap the camera again, or add a <b>Vision key</b> for an automatic fallback.');
               return;
             }
-          } else {
-            toast('Nothing written — tap the camera again in a few seconds');
-            return;
           }
         } else {
-          // Any OTHER error → show exactly what Google said, so we can diagnose.
-          alert('Gemini could not read the label.\n\nReason from Google: ' + (err.message || 'unknown') +
-                '\n\nNothing was written. Try again, or switch the engine to "Offline" / "Vision".');
+          showDiag('❌ <b>Gemini could not read the label.</b><br><span style="color:var(--text-faint)">Reason from Google: ' + escapeHtml(reason) + '</span><br><br>Nothing was written. Check the <b>Gemini key</b>, or switch to <b>Vision</b> / <b>Offline</b>.');
           return;
         }
       }
