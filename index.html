@@ -750,7 +750,7 @@
 <script>
 const el = id => document.getElementById(id);
 
-const APP_VERSION = 'v6.6';
+const APP_VERSION = 'v6.7';
 document.getElementById('appVersion').textContent = APP_VERSION;
 
 /* ---------- slide-in menu ---------- */
@@ -1403,7 +1403,9 @@ function setEngine(name){
   renderEngineUI();
 }
 function renderEngineUI(){
-  const eng = getEngine();
+  // Read the STORED choice here (not getEngine(), which reads the button → would be circular).
+  let eng = 'tesseract';
+  try{ eng = localStorage.getItem(ENGINE_KEY) || 'tesseract'; }catch(e){}
   el('engTess').classList.toggle('active', eng === 'tesseract');
   el('engCloud').classList.toggle('active', eng === 'vision');
   el('engGemini').classList.toggle('active', eng === 'gemini');
