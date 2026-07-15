@@ -757,7 +757,7 @@
 <script>
 const el = id => document.getElementById(id);
 
-const APP_VERSION = 'v6.8';
+const APP_VERSION = 'v6.9';
 document.getElementById('appVersion').textContent = APP_VERSION;
 
 /* ---------- slide-in menu ---------- */
@@ -1470,10 +1470,10 @@ renderEngineUI();
 // Ordered by quality; when the busy ones are overloaded we automatically walk
 // down the list, and finally fall back to Vision (see runOcr).
 const GEMINI_MODELS = [
-  'gemini-2.5-flash',
-  'gemini-2.5-flash-lite',
-  'gemini-2.0-flash',
-  'gemini-flash-latest'
+  'gemini-2.0-flash',        // stable, usually the least congested
+  'gemini-2.5-flash-lite',   // light + fast, rarely busy
+  'gemini-flash-latest',     // Google's current stable alias
+  'gemini-2.5-flash'         // best quality but most in-demand → last
 ];
 
 async function callGeminiModel(model, key, b64, prompt){
