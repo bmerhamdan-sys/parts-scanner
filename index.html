@@ -750,7 +750,7 @@
 <script>
 const el = id => document.getElementById(id);
 
-const APP_VERSION = 'v6.5';
+const APP_VERSION = 'v6.6';
 document.getElementById('appVersion').textContent = APP_VERSION;
 
 /* ---------- slide-in menu ---------- */
@@ -1374,6 +1374,12 @@ const APIKEY_KEY = 'partsScanner.visionKey';
 const GEMKEY_KEY = 'partsScanner.geminiKey';
 
 function getEngine(){
+  // Source of truth = the highlighted button (matches what the user sees).
+  try{
+    if(el('engGemini') && el('engGemini').classList.contains('active')) return 'gemini';
+    if(el('engCloud')  && el('engCloud').classList.contains('active'))  return 'vision';
+    if(el('engTess')   && el('engTess').classList.contains('active'))   return 'tesseract';
+  }catch(e){}
   try{ return localStorage.getItem(ENGINE_KEY) || 'tesseract'; }catch(e){ return 'tesseract'; }
 }
 function getApiKey(){
@@ -1810,7 +1816,10 @@ function cleanOcrText(raw){
 
 el('btnOcr').addEventListener('click', ()=>{
   if(current.devices.length === 0){ toast('Select the machine first'); return; }
-  if(typeof Tesseract === 'undefined'){ toast('Text extraction tool failed to load'); return; }
+  const eng = getEngine();
+  if(eng === 'gemini' && !getGeminiKey()){ toast('Add your Gemini key first'); promptGeminiKey(); return; }
+  if(eng === 'vision' && !getApiKey()){ toast('Add your Vision key first'); promptApiKey(); return; }
+  if(eng === 'tesseract' && typeof Tesseract === 'undefined'){ toast('Text extraction tool failed to load'); return; }
   if(ocrRunning) return;
   el('fileOcr').click();
 });
