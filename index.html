@@ -110,11 +110,51 @@
   .brand-text .t1{font-weight:700; font-size:16.5px; letter-spacing:.2px;}
   .brand-text .t2{font-size:11.5px; color:var(--text-dim); font-family:var(--font-mono); letter-spacing:.5px;}
   .theme-btn{
-    width:38px; height:38px; border-radius:50%; flex-shrink:0;
+    width:38px; height:38px; border-radius:10px; flex-shrink:0;
     border:1px solid var(--border); background:var(--surface);
-    box-shadow:var(--shadow-card); cursor:pointer; font-size:17px;
+    box-shadow:var(--shadow-card); cursor:pointer; font-size:19px;
     display:flex; align-items:center; justify-content:center;
   }
+  .menu-overlay{
+    position:fixed; inset:0; background:rgba(10,14,22,0.45);
+    opacity:0; pointer-events:none; transition:opacity .2s; z-index:60;
+  }
+  .menu-overlay.open{ opacity:1; pointer-events:auto; }
+  .menu-panel{
+    position:fixed; top:0; right:0; bottom:0; width:min(86vw, 340px);
+    background:var(--surface); border-left:1px solid var(--border);
+    box-shadow:-8px 0 30px rgba(10,14,22,0.25);
+    transform:translateX(100%); transition:transform .22s ease; z-index:61;
+    display:flex; flex-direction:column; padding:0 0 env(safe-area-inset-bottom);
+    overflow-y:auto;
+  }
+  .menu-panel.open{ transform:translateX(0); }
+  .menu-head{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:18px 18px 14px; border-bottom:1px solid var(--border);
+    font-weight:700; font-size:16px; position:sticky; top:0; background:var(--surface);
+  }
+  .menu-x{ background:none; border:none; color:var(--text-faint); font-size:18px; cursor:pointer; padding:4px 8px; border-radius:8px; }
+  .menu-x:hover{ color:var(--laser); background:var(--surface-2); }
+  .menu-section{ padding:16px 18px; border-bottom:1px solid var(--border); }
+  .menu-label{ font-size:11px; text-transform:uppercase; letter-spacing:.7px; color:var(--text-faint); font-weight:700; margin-bottom:12px; }
+  .menu-field{ display:block; font-size:12px; color:var(--text-dim); font-weight:600; margin-bottom:12px; }
+  .menu-field input{
+    width:100%; margin-top:6px; background:var(--surface-2); border:1px solid var(--border);
+    color:var(--text); border-radius:9px; padding:10px 11px; font-family:var(--font-ui); font-size:13.5px;
+  }
+  .menu-field input:focus{ outline:none; border-color:var(--blue); box-shadow:0 0 0 3px var(--blue-glow); }
+  .menu-hint{ font-size:11px; color:var(--text-faint); line-height:1.6; }
+  .menu-item{
+    width:100%; text-align:left; background:var(--surface-2); border:1px solid var(--border);
+    color:var(--text); border-radius:10px; padding:12px 13px; margin-bottom:9px;
+    font-family:var(--font-ui); font-size:13.5px; font-weight:600; cursor:pointer;
+  }
+  .menu-item:last-child{ margin-bottom:0; }
+  .menu-item:hover{ border-color:var(--text-faint); }
+  .menu-item.danger{ color:var(--laser); border-color:rgba(224,52,36,0.3); }
+  .menu-item.danger:hover{ background:rgba(224,52,36,0.06); }
+  .menu-foot{ margin-top:auto; padding:16px 18px; font-family:var(--font-mono); font-size:11px; color:var(--text-faint); }
   .header-right{ display:flex; align-items:center; gap:8px; }
   .counter-pill{
     background:var(--surface); border:1px solid var(--border);
@@ -459,10 +499,44 @@
       </div>
     </div>
     <div class="header-right">
-      <button class="theme-btn" id="btnTheme" title="Switch theme">🌙</button>
       <div class="counter-pill">Logged <b id="countBadge">0</b></div>
+      <button class="theme-btn" id="btnMenu" title="Menu" aria-label="Menu">☰</button>
     </div>
   </header>
+
+  <!-- Slide-in settings menu -->
+  <div class="menu-overlay" id="menuOverlay"></div>
+  <aside class="menu-panel" id="menuPanel" aria-hidden="true">
+    <div class="menu-head">
+      <span>Menu</span>
+      <button class="menu-x" id="menuClose" aria-label="Close">✕</button>
+    </div>
+
+    <div class="menu-section">
+      <div class="menu-label">Report details</div>
+      <label class="menu-field">Project / Site name
+        <input type="text" id="projName" placeholder="e.g. King Fahad Hospital — Riyadh">
+      </label>
+      <label class="menu-field">Technician name
+        <input type="text" id="techName" placeholder="Your name">
+      </label>
+      <div class="menu-hint">These appear in the header of the Word &amp; Excel reports.</div>
+    </div>
+
+    <div class="menu-section">
+      <div class="menu-label">Data</div>
+      <button class="menu-item" id="btnExportData">⬇ Backup inventory (JSON)</button>
+      <button class="menu-item" id="btnImportData">⬆ Import / merge backup</button>
+      <button class="menu-item danger" id="btnClear">🗑 Clear all logged parts</button>
+    </div>
+
+    <div class="menu-section">
+      <div class="menu-label">Appearance</div>
+      <button class="menu-item" id="btnTheme">🌙 Switch day / night theme</button>
+    </div>
+
+    <div class="menu-foot"><span id="appVersionMenu"></span></div>
+  </aside>
 
   <!-- STEP 1: Scan -->
   <div class="card" id="cardScan">
@@ -653,8 +727,8 @@
   <div class="card" id="cardHist">
     <div class="hist-head">
       <div class="t">Logged parts</div>
-      <button class="btn btn-ghost" id="btnClear" style="font-size:11.5px; padding:6px 10px;">Clear all</button>
     </div>
+    <input type="file" accept="application/json,.json" id="fileImport" style="display:none;">
     <input type="text" id="histSearch" placeholder="🔍 Search part no. / description / machine" style="width:100%; margin-bottom:12px;">
     <div id="histList">
       <div class="hist-empty">No parts logged yet — start by scanning a barcode</div>
@@ -674,8 +748,36 @@
 <div class="toast" id="toast"></div>
 
 <script>
-const APP_VERSION = 'v4.8';
+const el = id => document.getElementById(id);
+
+const APP_VERSION = 'v6.0';
 document.getElementById('appVersion').textContent = APP_VERSION;
+
+/* ---------- slide-in menu ---------- */
+function openMenu(){
+  el('menuPanel').classList.add('open');
+  el('menuOverlay').classList.add('open');
+  el('menuPanel').setAttribute('aria-hidden','false');
+}
+function closeMenu(){
+  el('menuPanel').classList.remove('open');
+  el('menuOverlay').classList.remove('open');
+  el('menuPanel').setAttribute('aria-hidden','true');
+}
+el('btnMenu').addEventListener('click', openMenu);
+el('menuClose').addEventListener('click', closeMenu);
+el('menuOverlay').addEventListener('click', closeMenu);
+document.getElementById('appVersionMenu').textContent = 'Spare Parts Scanner · ' + APP_VERSION;
+
+/* ---------- project / technician (saved, shown in report headers) ---------- */
+const PROJ_KEY = 'partsScanner.project';
+const TECH_KEY = 'partsScanner.tech';
+try{ el('projName').value = localStorage.getItem(PROJ_KEY) || ''; }catch(e){}
+try{ el('techName').value = localStorage.getItem(TECH_KEY) || ''; }catch(e){}
+el('projName').addEventListener('change', ()=>{ try{ localStorage.setItem(PROJ_KEY, el('projName').value.trim()); }catch(e){} });
+el('techName').addEventListener('change', ()=>{ try{ localStorage.setItem(TECH_KEY, el('techName').value.trim()); }catch(e){} });
+function getProject(){ try{ return localStorage.getItem(PROJ_KEY) || ''; }catch(e){ return ''; } }
+function getTech(){ try{ return localStorage.getItem(TECH_KEY) || ''; }catch(e){ return ''; } }
 
 /* ---------- theme switcher ---------- */
 const THEME_KEY = 'partsScanner.theme';
@@ -729,7 +831,6 @@ let recognition = null;
 let isRecording = false;
 let finalTranscript = '';
 
-const el = id => document.getElementById(id);
 
 function toast(msg){
   const t = el('toast');
@@ -2124,6 +2225,107 @@ el('btnSave').addEventListener('click', ()=>{
   window.scrollTo({ top: 0, behavior: 'smooth' });
 });
 
+/* ---------- backup: export / import the whole inventory as JSON ---------- */
+el('btnExportData').addEventListener('click', ()=>{
+  closeMenu();
+  if(entries.length === 0){ toast('Nothing to back up yet'); return; }
+  const payload = {
+    app: 'parts-scanner',
+    version: APP_VERSION,
+    exportedAt: new Date().toISOString(),
+    count: entries.length,
+    entries: entries
+  };
+  const blob = new Blob([JSON.stringify(payload)], { type:'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const stamp = new Date().toISOString().slice(0,16).replace(/[:T]/g,'-');
+  a.href = url;
+  a.download = `parts-inventory-backup_${stamp}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(()=> URL.revokeObjectURL(url), 3000);
+  toast('Backup saved ✓');
+});
+
+el('btnImportData').addEventListener('click', ()=>{ closeMenu(); el('fileImport').click(); });
+
+el('fileImport').addEventListener('change', e=>{
+  const file = e.target.files[0];
+  el('fileImport').value = '';
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = ()=>{
+    let data;
+    try{ data = JSON.parse(reader.result); }
+    catch(err){ alert('This file is not a valid backup (could not read it).'); return; }
+
+    const incoming = Array.isArray(data) ? data : (data && data.entries);
+    if(!Array.isArray(incoming) || incoming.length === 0){
+      alert('No inventory entries found in that file.');
+      return;
+    }
+    // keep only well-formed entries
+    const clean = incoming.filter(x=> x && x.barcode && Array.isArray(x.devices) && Array.isArray(x.subs));
+    if(clean.length === 0){ alert('The backup contained no usable entries.'); return; }
+
+    const choice = entries.length === 0
+      ? 'replace'
+      : (confirm(
+          'Import ' + clean.length + ' part(s) from the backup.\n\n' +
+          'OK = MERGE into your current ' + entries.length + ' part(s) ' +
+          '(same barcode + same box → quantities are added).\n\n' +
+          'Cancel = REPLACE everything with the backup.') ? 'merge' : 'replace');
+
+    if(choice === 'replace'){
+      entries = clean.map(normalizeEntry);
+    } else {
+      clean.forEach(item=>{
+        const inc = normalizeEntry(item);
+        const match = entries.find(ex=> ex.barcode === inc.barcode && (ex.box||1) === (inc.box||1));
+        if(match){
+          match.qty += inc.qty;
+          match.lastTime = inc.lastTime || match.lastTime;
+          if(!match.photo && inc.photo) match.photo = inc.photo;
+          if(!match.descPhoto && inc.descPhoto) match.descPhoto = inc.descPhoto;
+          if(!match.desc && inc.desc) match.desc = inc.desc;
+          if(!match.descOriginal && inc.descOriginal){ match.descOriginal = inc.descOriginal; match.descLang = inc.descLang; }
+        } else {
+          inc.id = Date.now() + Math.floor(Math.random()*100000);
+          entries.push(inc);
+        }
+      });
+    }
+    renderHistory();
+    persist();
+    toast(choice === 'merge' ? 'Merged ✓' : 'Imported ✓');
+  };
+  reader.onerror = ()=> alert('Could not read the file.');
+  reader.readAsText(file);
+});
+
+// fill in any fields an older backup might be missing
+function normalizeEntry(e){
+  return {
+    id: e.id || (Date.now() + Math.floor(Math.random()*100000)),
+    barcode: String(e.barcode),
+    devices: Array.isArray(e.devices) ? e.devices : [],
+    subs: Array.isArray(e.subs) ? e.subs : [],
+    conf: e.conf || 'Low',
+    photo: e.photo || null,
+    desc: e.desc || '',
+    descOriginal: e.descOriginal || '',
+    descLang: e.descLang || '',
+    descPhoto: e.descPhoto || null,
+    qty: (typeof e.qty === 'number' && e.qty > 0) ? e.qty : 1,
+    box: (typeof e.box === 'number' && e.box > 0) ? e.box : 1,
+    time: e.time || new Date().toLocaleString('en-GB', { hour12:true }),
+    lastTime: e.lastTime || e.time || new Date().toLocaleString('en-GB', { hour12:true }),
+    mismatch: !!e.mismatch
+  };
+}
+
 function sameSet(a, b){
   if(a.length !== b.length) return false;
   const sb = new Set(b);
@@ -2253,7 +2455,12 @@ function exportExcel(){
     'DrugNest': e.subs.includes('DrugNest') ? 'Yes' : '',
     'Not sure': e.subs.includes('Not sure') ? 'Yes' : ''
   }));
-  const ws = XLSX.utils.json_to_sheet(rows);
+  const ws = XLSX.utils.json_to_sheet(rows, { origin: 'A3' });
+  // project / technician banner in the first rows
+  XLSX.utils.sheet_add_aoa(ws, [
+    ['Spare Parts Inventory' + (getProject() ? ' — ' + getProject() : '') + (getTech() ? '  |  Technician: ' + getTech() : '')],
+    ['Exported: ' + new Date().toLocaleString('en-GB')]
+  ], { origin: 'A1' });
   ws['!cols'] = [
     {wch:4},{wch:10},{wch:24},{wch:45},{wch:6},{wch:6},{wch:32},{wch:11},{wch:22},{wch:22},{wch:10},{wch:20},
     {wch:45},{wch:14},{wch:20},
@@ -2261,10 +2468,10 @@ function exportExcel(){
     {wch:11},{wch:10},{wch:9},{wch:10},{wch:11},{wch:9},{wch:11},{wch:10},{wch:9}
   ];
   // freeze the header row so the flags stay readable while scrolling
-  ws['!freeze'] = { xSplit: 0, ySplit: 1 };
-  // enable autofilter across the whole table for one-click sorting
+  ws['!freeze'] = { xSplit: 0, ySplit: 3 };   // header sits on row 3 now
+  // enable autofilter across the table (header row 3 → data through row 3+N)
   const lastCol = XLSX.utils.encode_col(Object.keys(rows[0] || {}).length - 1);
-  ws['!autofilter'] = { ref: 'A1:' + lastCol + (rows.length + 1) };
+  ws['!autofilter'] = { ref: 'A3:' + lastCol + (rows.length + 3) };
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Spare Parts');
   const stamp = new Date().toISOString().slice(0,10);
@@ -2279,10 +2486,65 @@ function entryGroup(e){
   return e.devices[0] === 'BoxPicker' ? 0 : 1;       // BoxPicker / PillPick
 }
 
+// Render a short label as a vertical-text PNG so EVERY viewer (Word, mobile,
+// LibreOffice) shows the classification headers rotated identically.
+function makeVerticalHeaderPng(text, bg){
+  const scale = 3;                       // crisp on all viewers
+  const w = 26, h = 82;
+  const c = document.createElement('canvas');
+  c.width = w * scale; c.height = h * scale;
+  const ctx = c.getContext('2d');
+  ctx.scale(scale, scale);
+  // box background (white by default, light grey to set a column apart)
+  ctx.fillStyle = bg || '#ffffff';
+  ctx.fillRect(0, 0, w, h);
+  ctx.strokeStyle = '#000000';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(0.5, 0.5, w - 1, h - 1);
+  // black vertical text
+  ctx.save();
+  ctx.translate(w/2, h - 6);
+  ctx.rotate(-Math.PI/2);               // bottom-to-top text
+  ctx.fillStyle = '#000000';
+  ctx.font = '600 12px \'IBM Plex Sans\', Arial, sans-serif';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, 0, 0);
+  ctx.restore();
+  return c.toDataURL('image/png');
+}
+
 function exportWord(){
   if(entries.length === 0) return;
 
   const images = [];
+
+  // build the 9 vertical-header images once, embed them like any other image
+  const CLASS_COLS = [
+    { key:'BoxPicker',  in:e=> e.devices.includes('BoxPicker') },
+    { key:'PillPick',   in:e=> e.devices.includes('PillPick') },
+    { key:'AutoBox',    in:e=> e.subs.includes('AutoBox') },
+    { key:'Autophial',  in:e=> e.subs.includes('Autophial') },
+    { key:'Autophial+', in:e=> e.subs.includes('Autophial+') },
+    { key:'Pickring',   in:e=> e.subs.includes('Pickring') },
+    { key:'PillPicker', in:e=> e.subs.includes('PillPicker') },
+    { key:'DrugNest',   in:e=> e.subs.includes('DrugNest') },
+    { key:'Not sure',   in:e=> e.subs.includes('Not sure') }
+  ];
+  const classHeaderCells = CLASS_COLS.map((col, idx)=>{
+    const png = makeVerticalHeaderPng(col.key, col.key === 'Not sure' ? '#e2e2e2' : '#ffffff');
+    const m = png.match(/^data:(image\/png);base64,(.+)$/i);
+    const loc = `file:///C:/parts/hdr_${idx}.png`;
+    images.push({ loc, type:m[1], b64:m[2] });
+    return `<th class="vt"><img src="${loc}" width="26" height="82" style="display:block;"></th>`;
+  }).join('');
+
+  // Confidence header as a vertical image with a light-grey fill
+  const confPng = makeVerticalHeaderPng('Confidence', '#e2e2e2');
+  const confM = confPng.match(/^data:(image\/png);base64,(.+)$/i);
+  const confLoc = `file:///C:/parts/hdr_conf.png`;
+  images.push({ loc: confLoc, type:confM[1], b64:confM[2] });
+  const confHeaderCell = `<th class="vt"><img src="${confLoc}" width="26" height="82" style="display:block;"></th>`;
 
   function rowHtml(e, i){
     const deviceLabel = escapeHtml(entryDeviceLabel(e));
@@ -2297,7 +2559,7 @@ function exportWord(){
       }
     }
     const mismatchNote = e.mismatch ? '<br><span style="color:#b00; font-size:10px;">⚠ Different classification on a later scan</span>' : '';
-    const descCell = e.desc ? escapeHtml(e.desc) : `<span style="color:#aaa;">—</span>`;
+    const descCell = (e.desc ? escapeHtml(e.desc) : `<span style="color:#aaa;">—</span>`) + mismatchNote;
 
     const origCell = e.descOriginal
       ? escapeHtml(e.descOriginal) + (e.descLang ? `<br><span style="color:#888; font-size:10px;">(${escapeHtml(e.descLang)})</span>` : '')
@@ -2314,17 +2576,17 @@ function exportWord(){
       }
     }
 
+    const zebra = (i % 2 === 1) ? ' style="background:#eef1f5;"' : '';
     return `
-      <tr>
+      <tr${zebra}>
         <td style="text-align:center;">${i+1}</td>
         <td style="text-align:center;">${photoCell}</td>
         <td style="font-family:'Courier New',monospace; direction:ltr; text-align:center;">${escapeHtml(e.barcode)}</td>
         <td style="text-align:left; font-size:11.5px;">${descCell}</td>
         <td style="text-align:center; font-weight:bold;">${e.qty}</td>
         <td style="text-align:center; font-weight:bold;">${e.box || 1}</td>
-        <td style="text-align:center;">${deviceLabel}${mismatchNote}</td>
-        <td style="text-align:center; color:${e.conf==='High' ? '#1a7a4a' : '#a86a00'}; font-weight:bold;">${e.conf}</td>
-        <td style="text-align:center; font-size:11px; color:#555;">${e.qty>1 ? e.time + '<br>Last: ' + e.lastTime : e.time}</td>
+        ${CLASS_COLS.map(col=> `<td class="tick">${col.in(e) ? '✓' : ''}</td>`).join('')}
+        <td style="text-align:center; color:${e.conf==='High' ? '#1a7a4a' : '#a86a00'}; font-weight:bold;">${e.conf==='High' ? 'H' : 'L'}</td>
         <td style="text-align:left; font-size:11.5px;">${origCell}</td>
         <td style="text-align:center;">${descPhotoCell}</td>
       </tr>`;
@@ -2332,18 +2594,17 @@ function exportWord(){
 
   const thead = `
       <thead>
-        <tr>
-          <th>#</th>
-          <th>Photo</th>
-          <th>Part No. (Barcode)</th>
+        <tr style='mso-yfti-irow:-1;mso-yfti-firstrow:yes' class="rpt">
+          <th style="width:26px;">#</th>
+          <th style="width:44px;">Photo</th>
+          <th style="width:80px;">Part No.<br>(Barcode)</th>
           <th>Description</th>
-          <th>Qty</th>
-          <th>Box</th>
-          <th>Machine / Component</th>
-          <th>Confidence</th>
-          <th>Logged at</th>
-          <th>Original description</th>
-          <th>Description photo</th>
+          <th style="width:30px;">Qty</th>
+          <th style="width:30px;">Box</th>
+          ${classHeaderCells}
+          ${confHeaderCell}
+          <th style="width:90px;">Original<br>description</th>
+          <th style="width:70px;">Description<br>photo</th>
         </tr>
       </thead>`;
 
@@ -2353,14 +2614,11 @@ function exportWord(){
     { title: 'Shared parts (BoxPicker + PillPick)',  items: entries.filter(e=> entryGroup(e) === 2) }
   ].filter(g=> g.items.length > 0);
 
-  const sections = groups.map(g=>{
-    const qtySum = g.items.reduce((s,e)=> s + e.qty, 0);
-    const sortedItems = g.items.slice().sort((a,b)=> (a.box || 1) - (b.box || 1));
-    const rows = sortedItems.map((e,i)=> rowHtml(e, i)).join('');
-    return `
-    <h2>${g.title} <span style="font-weight:normal; color:#666; font-size:12px;">(${g.items.length} items · ${qtySum} parts)</span></h2>
-    <table>${thead}<tbody>${rows}</tbody></table>`;
-  }).join('<br>');
+  // One plain continuous table — no device grouping. Sorted by box, then group.
+  const allItems = entries.slice().sort((a,b)=>
+    ((a.box || 1) - (b.box || 1)) || (entryGroup(a) - entryGroup(b)));
+  const bodyRows = allItems.map((e,i)=> rowHtml(e, i)).join('');
+  const sections = `<table>${thead}<tbody>${bodyRows}</tbody></table>`;
 
   const high = entries.filter(e=>e.conf==='High').length;
   const low = entries.filter(e=>e.conf==='Low').length;
@@ -2401,9 +2659,22 @@ function exportWord(){
       h2{ font-size:14px; color:#1c2230; border-bottom:2px solid #1c2230; padding-bottom:4px; margin:22px 0 8px;}
       .sub{ color:#666; font-size:12px; margin-bottom:6px;}
       table{ border-collapse:collapse; width:100%; }
-      th{ background:#1c2230; color:#fff; padding:6px 4px; font-size:10.5px; text-align:center; }
-      td{ border:1px solid #ccc; padding:5px 4px; font-size:10.5px; }
-      table{ table-layout:fixed; word-wrap:break-word; }
+      table{ border-collapse:collapse; width:100%; border:1.5px solid #333; }
+      th{ background:#1c2230; color:#fff; padding:6px 4px; font-size:10.5px; text-align:center; vertical-align:bottom; border:1px solid #555; }
+      thead{ display:table-header-group; }        /* repeat header on every printed page */
+      tr.rpt td, tr.rpt th{ mso-row-heading:yes; }
+      td{ border:1px solid #999; padding:5px 4px; font-size:10.5px; vertical-align:middle; }
+      /* zebra striping is applied inline per row for viewer compatibility */
+
+      /* narrow classification columns with vertical image headers */
+      th.vt{ width:26px; padding:0; text-align:center; vertical-align:bottom; }
+      th.vt img{ margin:0 auto; }
+      td.tick{
+        width:26px; text-align:center; border:1px solid #999;
+        padding:5px 3px; font-size:13px; font-weight:bold; color:#1a7a4a;
+      }
+      .legend{ margin-top:10px; font-size:11px; color:#555; line-height:1.8; }
+      .legend b{ color:#111; }
       .summary{ margin-top:18px; font-size:12px; color:#333; }
       .summary b{ color:#111; }
     </style>
@@ -2411,6 +2682,7 @@ function exportWord(){
   <body dir="ltr">
     <div class="Section1">
     <h1>Spare Parts Inventory Report — BoxPicker / PillPick</h1>
+    ${(getProject() || getTech()) ? `<div class="sub" style="font-size:13px; color:#111;">${getProject() ? '<b>Site/Project:</b> ' + escapeHtml(getProject()) : ''}${getProject() && getTech() ? ' &nbsp;|&nbsp; ' : ''}${getTech() ? '<b>Technician:</b> ' + escapeHtml(getTech()) : ''}</div>` : ''}
     <div class="sub">Exported: ${new Date().toLocaleString('en-GB')} &nbsp;|&nbsp; Distinct items: ${entries.length} &nbsp;|&nbsp; Total parts (by quantity): ${totalQty}</div>
     ${sections}
     <div class="summary">
