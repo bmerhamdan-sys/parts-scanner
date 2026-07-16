@@ -818,7 +818,7 @@
 <script>
 const el = id => document.getElementById(id);
 
-const APP_VERSION = 'v7.6';
+const APP_VERSION = 'v7.7';
 document.getElementById('appVersion').textContent = APP_VERSION;
 
 /* ---------- slide-in menu ---------- */
@@ -882,13 +882,11 @@ function restoreEntries(){
     if(!raw) return;
     const arr = JSON.parse(raw);
     if(Array.isArray(arr)){
-      entries = arr.filter(e=> e && e.barcode && Array.isArray(e.devices) && Array.isArray(e.subs));
-      entries.forEach(e=>{
-        if(!e.box) e.box = 1;
-        if(!e.descOriginal) e.descOriginal = '';
-        if(!e.descLang) e.descLang = '';
-        if(!e.descPhoto) e.descPhoto = null;
-      });
+      // keep any entry that has a barcode; normalizeEntry backfills missing fields
+      // (arrays, box, descPhoto...) and forces barcode to a clean string so
+      // search + duplicate detection work on imported/old data too.
+      entries = arr.filter(e=> e && e.barcode != null && e.barcode !== '')
+                   .map(normalizeEntry);
     }
   }catch(err){ console.error('restore failed:', err); }
 }
@@ -2458,8 +2456,8 @@ el('fileImport').addEventListener('change', e=>{
       alert('No inventory entries found in that file.');
       return;
     }
-    // keep only well-formed entries
-    const clean = incoming.filter(x=> x && x.barcode && Array.isArray(x.devices) && Array.isArray(x.subs));
+    // keep any entry that has a barcode; normalizeEntry backfills the rest
+    const clean = incoming.filter(x=> x && x.barcode != null && x.barcode !== '');
     if(clean.length === 0){ alert('The backup contained no usable entries.'); return; }
 
     const choice = entries.length === 0
@@ -2613,9 +2611,9 @@ function renderHistory(){
 
   const q = histFilter.trim().toLowerCase();
   const visible = !q ? entries : entries.filter(e=>
-    e.barcode.toLowerCase().includes(q) ||
-    (e.desc || '').toLowerCase().includes(q) ||
-    entryDeviceLabel(e).toLowerCase().includes(q)
+    String(e.barcode || '').toLowerCase().includes(q) ||
+    String(e.desc || '').toLowerCase().includes(q) ||
+    String(entryDeviceLabel(e) || '').toLowerCase().includes(q)
   );
 
   if(visible.length === 0){
