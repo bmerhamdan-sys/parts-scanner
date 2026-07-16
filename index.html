@@ -361,6 +361,23 @@
   .engine-pill button.active{ background:var(--blue); color:#fff; }
   .key-link{ background:none; border:none; color:var(--blue); font-size:11.5px; cursor:pointer; text-decoration:underline; padding:0; font-family:var(--font-ui); }
 
+  .btn-smart{
+    background:linear-gradient(135deg, #6d3bf0, #2c5fd8); color:#fff; border:none;
+    font-weight:700; box-shadow:0 3px 12px rgba(80,60,220,0.28);
+  }
+  .btn-smart:hover{ filter:brightness(1.07); }
+  .ai-working{
+    display:none; align-items:center; gap:10px; margin-bottom:12px;
+    background:rgba(44,95,216,0.07); border:1px solid var(--blue);
+    border-radius:12px; padding:11px 13px; font-size:13px; color:var(--blue); font-weight:600;
+  }
+  .ai-working.show{ display:flex; }
+  .ai-spinner{
+    width:18px; height:18px; flex-shrink:0; border-radius:50%;
+    border:2.5px solid rgba(44,95,216,0.25); border-top-color:var(--blue);
+    animation:aispin 0.7s linear infinite;
+  }
+  @keyframes aispin{ to{ transform:rotate(360deg); } }
   .diag-box{
     display:none; margin-bottom:12px; border:1px solid var(--laser);
     background:rgba(224,52,36,0.06); border-radius:12px; padding:11px 12px;
@@ -562,8 +579,14 @@
     </div>
 
     <div class="scan-controls">
-      <button class="btn btn-primary btn-wide" id="btnStart">▶ Start camera</button>
+      <button class="btn btn-smart btn-wide" id="btnSmartShot">✨ Smart Shot — barcode + description in one photo</button>
+      <button class="btn btn-primary btn-wide" id="btnStart">▶ Start camera (live)</button>
       <button class="btn btn-stop btn-wide" id="btnStop" style="display:none;">⏹ Stop camera</button>
+    </div>
+    <input type="file" accept="image/*" capture="environment" id="fileSmart" style="display:none;">
+    <div class="ai-working" id="smartWorking" style="margin-top:10px;">
+      <span class="ai-spinner"></span>
+      <span id="smartWorkingText">Working…</span>
     </div>
 
     <div class="manual-row">
@@ -694,7 +717,7 @@
   <!-- STEP 5: Description (voice-to-text + OCR — English only) -->
   <div class="card dim" id="cardDesc">
     <div class="step-label">
-      <div class="step-num" id="numDesc">6</div>
+      <div class="step-num" id="numDesc">8</div>
       <div class="step-title">Part description</div>
     </div>
     <div class="dup-note" id="dupNoteDesc"></div>
@@ -714,6 +737,10 @@
       <span class="mic-status" id="micStatus"></span>
     </div>
     <input type="file" accept="image/*" capture="environment" id="fileOcr" style="display:none;">
+    <div class="ai-working" id="aiWorking">
+      <span class="ai-spinner"></span>
+      <span id="aiWorkingText">Gemini is reading the label…</span>
+    </div>
     <div class="diag-box" id="diagBox"></div>
     <div class="sugg-box" id="suggBox">
       <div class="sugg-head">
@@ -757,7 +784,7 @@
 <script>
 const el = id => document.getElementById(id);
 
-const APP_VERSION = 'v7.0';
+const APP_VERSION = 'v7.3';
 document.getElementById('appVersion').textContent = APP_VERSION;
 
 /* ---------- slide-in menu ---------- */
@@ -1125,7 +1152,7 @@ el('fileScan').addEventListener('change', async e=>{
     const text = await scanner.scanFile(file, /* showImage */ true);
     try{ scanner.clear(); }catch(_){}
     el('scanBox').classList.add('idle');
-    camDiag("If the camera doesn't start (browser permissions), use manual entry above.");
+    camDiag('');
     setBarcode(text);
     toast('Barcode scanned from photo ✓');
   }catch(err){
@@ -1136,6 +1163,92 @@ el('fileScan').addEventListener('change', async e=>{
     toast('No barcode found in the photo');
   }
 });
+
+function showSmartWorking(on, label){
+  const w = el('smartWorking');
+  if(on){ el('smartWorkingText').textContent = label || 'Working…'; w.classList.add('show'); }
+  else { w.classList.remove('show'); }
+}
+
+el('btnSmartShot').addEventListener('click', ()=>{
+  el('fileSmart').click();
+});
+
+el('fileSmart').addEventListener('change', async e=>{
+  const file = e.target.files[0];
+  el('fileSmart').value = '';
+  if(!file) return;
+  if(cameraRunning) stopCamera();
+
+  // 1) read the barcode from the SAME photo (local scanner first)
+  showSmartWorking(true, 'Reading the barcode…');
+  let code = null;
+  try{
+    const scanner = new Html5Qrcode("reader");
+    try{
+      code = await scanner.scanFile(file, false);
+    }finally{ try{ scanner.clear(); }catch(_){ } }
+  }catch(err){ console.warn('local barcode read failed:', err); }
+
+  // 2) if the local scanner failed, ask Gemini to read the barcode number
+  if(!code && getGeminiKey()){
+    showSmartWorking(true, 'Barcode unclear — asking Gemini…');
+    try{ code = await readBarcodeWithGemini(file); }
+    catch(err){ console.warn('Gemini barcode read failed:', err); }
+  }
+
+  if(!code){
+    showSmartWorking(false);
+    camDiag('Could not read the barcode from that photo. Fill the frame with the barcode, keep it flat and in focus, then try again — or type it manually.');
+    toast('No barcode found — try again or enter manually');
+    return;
+  }
+
+  // accept the barcode (this resets downstream + unlocks classification)
+  setBarcode(code);
+  toast('Barcode: ' + code + ' ✓');
+
+  // 3) use the SAME photo for the description via Gemini (not saved as the part photo)
+  if(getGeminiKey()){
+    // make sure the description engine is Gemini so the suggestion card appears
+    try{ localStorage.setItem(ENGINE_KEY, 'gemini'); }catch(_){}
+    renderEngineUI();
+    showSmartWorking(true, 'Gemini is reading the description…');
+    try{
+      const obj = await recognizeWithGemini(file, ()=>{});   // does NOT set current.descPhoto path below
+      if(obj && showSuggestions(obj)){
+        toast('Description ready — pick a version in step 8');
+      } else {
+        toast('No description text found in the photo');
+      }
+    }catch(err){
+      console.error('Smart Shot Gemini failed:', err);
+      showDiag('⚠ <b>Barcode captured</b>, but Gemini could not read the description.<br><span style="color:var(--text-faint)">Reason: ' + escapeHtml(err.message || 'unknown') + '</span><br><br>You can retake the description photo in step 8, or type it.');
+    }
+  } else {
+    toast('Add a Gemini key to auto-read the description');
+  }
+  showSmartWorking(false);
+});
+
+// Ask Gemini to return ONLY the barcode digits from the photo
+async function readBarcodeWithGemini(file){
+  const key = getGeminiKey();
+  if(!key) throw new Error('No Gemini key');
+  const canvas = await preprocessForOcr(file, true, 2000);
+  const b64 = canvas.toDataURL('image/jpeg', 0.9).split(',')[1];
+  const prompt = 'This photo shows a Swisslog spare-part label with a barcode and a long number printed under it. ' +
+    'Return ONLY that part number as digits (no spaces, no words, no barcode symbology name). ' +
+    'If you cannot read it clearly, reply exactly: NONE';
+  for(const model of GEMINI_MODELS){
+    try{
+      let text = await callGeminiModel(model, key, b64, prompt);
+      text = (text || '').replace(/[^0-9]/g, '');
+      if(text.length >= 4) return text;
+    }catch(err){ if(err.status && err.status !== 404 && !err.overloaded && !err.rateLimited) throw err; }
+  }
+  return null;
+}
 
 function setBarcode(code){
   cancelEdit();
@@ -1849,8 +1962,15 @@ function showDiag(html){
   d.scrollIntoView({ behavior:'smooth', block:'nearest' });
 }
 
+function showAiWorking(on, label){
+  const w = el('aiWorking');
+  if(on){ el('aiWorkingText').textContent = label || 'Gemini is reading the label…'; w.classList.add('show'); }
+  else { w.classList.remove('show'); }
+}
+
 async function runOcr(file){
   showDiag('');
+  showAiWorking(true, getEngine()==='gemini' ? 'Gemini is reading the label…' : (getEngine()==='vision' ? 'Google Vision is reading…' : 'Reading the text…'));
   ocrRunning = true;
   el('btnOcr').disabled = true;
   const setStatus = m=>{ el('micStatus').textContent = m; };
@@ -1946,6 +2066,7 @@ async function runOcr(file){
     ocrRunning = false;
     el('btnOcr').disabled = false;
     setStatus('');
+    showAiWorking(false);
   }
 }
 
