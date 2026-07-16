@@ -773,20 +773,6 @@
     <button class="btn btn-primary btn-wide save-btn" id="btnSave" disabled>💾 Save part &amp; continue to next</button>
   </div>
 
-  <!-- Live search-scanner modal -->
-  <div class="scan-modal" id="searchScanModal">
-    <div class="scan-modal-inner">
-      <div class="scan-modal-head">
-        <span>📷 Scan a barcode to search</span>
-        <button class="menu-x" id="searchScanClose" aria-label="Close">✕</button>
-      </div>
-      <div class="scan-box" id="searchScanBox" style="margin:0; aspect-ratio:auto; height:300px;">
-        <div id="searchReader" style="width:100%; height:100%;"></div>
-      </div>
-      <div class="hint" id="searchScanHint" style="margin-top:10px;">Point the camera at the barcode…</div>
-    </div>
-  </div>
-
   <!-- History -->
   <div class="card" id="cardHist">
     <div class="hist-head">
@@ -817,7 +803,7 @@
 <script>
 const el = id => document.getElementById(id);
 
-const APP_VERSION = 'v7.9';
+const APP_VERSION = 'v8.0';
 document.getElementById('appVersion').textContent = APP_VERSION;
 
 /* ---------- slide-in menu ---------- */
@@ -1077,6 +1063,7 @@ async function startCamera(){
 }
 
 function stopCamera(){
+  searchScanMode = false;
   if(html5QrCode && cameraRunning){
     html5QrCode.stop().then(()=>{
       html5QrCode.clear();
@@ -1142,8 +1129,19 @@ el('btnTorch').addEventListener('click', async ()=>{
   refreshTorchButton();
 });
 
+let searchScanMode = false;
 function onBarcode(code){
   if(!cameraRunning) return;
+  if(searchScanMode){
+    searchScanMode = false;
+    stopCamera();
+    el('histSearch').value = code;
+    histFilter = code;
+    renderHistory();
+    toast('Showing results for ' + code);
+    el('cardHist').scrollIntoView({ behavior:'smooth', block:'start' });
+    return;
+  }
   setBarcode(code);
   stopCamera();
   toast('Barcode scanned');
@@ -2534,82 +2532,14 @@ el('histSearch').addEventListener('input', e=>{
   renderHistory();
 });
 
-// search by scanning a barcode with a LIVE camera
-let searchScanner = null;
-let searchScanRunning = false;
-
-async function openSearchScanner(){
-  if(typeof Html5Qrcode === 'undefined'){ toast('Scanner library not loaded'); return; }
-  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
-    toast('Camera blocked: page must be HTTPS'); return;
-  }
-  // free the rear camera if the main live scanner is running (one camera at a time)
-  if(cameraRunning){ try{ stopCamera(); }catch(_){ } }
-
-  el('searchScanModal').classList.add('open');
-  el('searchScanHint').textContent = 'Starting camera…';
-
-  // Wait for the modal to actually lay out (two animation frames + a delay),
-  // otherwise the video attaches to a 0-height element → black screen.
-  await new Promise(r=> requestAnimationFrame(()=> requestAnimationFrame(r)));
-  await new Promise(r=> setTimeout(r, 400));
-
-  searchScanner = new Html5Qrcode("searchReader", {
-    formatsToSupport:[
-      Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.CODE_39,
-      Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8,
-      Html5QrcodeSupportedFormats.UPC_A, Html5QrcodeSupportedFormats.UPC_E,
-      Html5QrcodeSupportedFormats.ITF, Html5QrcodeSupportedFormats.QR_CODE,
-      Html5QrcodeSupportedFormats.DATA_MATRIX
-    ],
-    experimentalFeatures: { useBarCodeDetectorIfSupported: true },
-    verbose:false
-  });
-
-  const config = {
-    fps: 10, disableFlip: true,
-    qrbox: (vw, vh)=>{ const w = Math.floor(Math.min(vw * 0.85, 420)); return { width:w, height:Math.floor(w*0.5) }; }
-  };
-
-  const onFound = (code)=>{
-    if(!code || code.length < 4) return;
-    el('histSearch').value = code;
-    histFilter = code;
-    renderHistory();
-    closeSearchScanner();
-    toast('Showing results for ' + code);
-    el('histSearch').scrollIntoView({ behavior:'smooth', block:'center' });
-  };
-
-  try{
-    await searchScanner.start({ facingMode:{ ideal:'environment' } }, config, onFound, ()=>{});
-    searchScanRunning = true;
-    el('searchScanHint').textContent = 'Point the camera at the barcode…';
-  }catch(err){
-    console.error('search camera failed (environment):', err);
-    // retry with a plain rear/any camera in case the exact facingMode was rejected
-    try{
-      await searchScanner.start({ facingMode:'environment' }, config, onFound, ()=>{});
-      searchScanRunning = true;
-      el('searchScanHint').textContent = 'Point the camera at the barcode…';
-    }catch(err2){
-      console.error('search camera failed (retry):', err2);
-      el('searchScanHint').innerHTML = 'Could not start the camera (' + escapeHtml(err2.message||err2.name||'error') + ').<br>Close this and type the number instead.';
-    }
-  }
-}
-
-function closeSearchScanner(){
-  el('searchScanModal').classList.remove('open');
-  if(searchScanner && searchScanRunning){
-    searchScanner.stop().then(()=>{ try{ searchScanner.clear(); }catch(_){ } searchScanner=null; searchScanRunning=false; })
-      .catch(()=>{ searchScanner=null; searchScanRunning=false; });
-  } else { searchScanner = null; searchScanRunning = false; }
-}
-
-el('btnSearchCam').addEventListener('click', openSearchScanner);
-el('searchScanClose').addEventListener('click', closeSearchScanner);
-el('searchScanModal').addEventListener('click', e=>{ if(e.target === el('searchScanModal')) closeSearchScanner(); });
+// search by scanning a barcode — REUSE the main scanner (rock-solid) in search mode
+el('btnSearchCam').addEventListener('click', async ()=>{
+  searchScanMode = true;
+  // scroll to the scanner and start it; the first successful read fills the search box
+  el('cardScan').scrollIntoView({ behavior:'smooth', block:'start' });
+  toast('Point the camera at the barcode to search');
+  if(!cameraRunning){ await startCamera(); }
+});
 
 function renderHistory(){
   const list = el('histList');
