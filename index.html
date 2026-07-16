@@ -818,7 +818,7 @@
 <script>
 const el = id => document.getElementById(id);
 
-const APP_VERSION = 'v7.7';
+const APP_VERSION = 'v7.8';
 document.getElementById('appVersion').textContent = APP_VERSION;
 
 /* ---------- slide-in menu ---------- */
@@ -2544,8 +2544,15 @@ async function openSearchScanner(){
   if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
     toast('Camera blocked: page must be HTTPS'); return;
   }
+  // free the rear camera if the main live scanner is running (one camera at a time)
+  if(cameraRunning){ try{ stopCamera(); }catch(_){ } }
+
   el('searchScanModal').classList.add('open');
-  el('searchScanHint').textContent = 'Point the camera at the barcode…';
+  el('searchScanHint').textContent = 'Starting camera…';
+
+  // Let the modal paint and give #searchReader real dimensions BEFORE starting,
+  // otherwise the video track attaches to a 0-size / hidden element → black screen.
+  await new Promise(r=> setTimeout(r, 350));
 
   searchScanner = new Html5Qrcode("searchReader", {
     formatsToSupport:[
@@ -2576,11 +2583,20 @@ async function openSearchScanner(){
   };
 
   try{
-    await searchScanner.start({ facingMode:'environment' }, config, onFound, ()=>{});
+    await searchScanner.start({ facingMode:{ ideal:'environment' } }, config, onFound, ()=>{});
     searchScanRunning = true;
+    el('searchScanHint').textContent = 'Point the camera at the barcode…';
   }catch(err){
-    console.error('search camera failed:', err);
-    el('searchScanHint').textContent = 'Could not start the camera. Close and type the number instead.';
+    console.error('search camera failed (environment):', err);
+    // retry with a plain rear/any camera in case the exact facingMode was rejected
+    try{
+      await searchScanner.start({ facingMode:'environment' }, config, onFound, ()=>{});
+      searchScanRunning = true;
+      el('searchScanHint').textContent = 'Point the camera at the barcode…';
+    }catch(err2){
+      console.error('search camera failed (retry):', err2);
+      el('searchScanHint').innerHTML = 'Could not start the camera (' + escapeHtml(err2.message||err2.name||'error') + ').<br>Close this and type the number instead.';
+    }
   }
 }
 
