@@ -780,9 +780,8 @@
         <span>📷 Scan a barcode to search</span>
         <button class="menu-x" id="searchScanClose" aria-label="Close">✕</button>
       </div>
-      <div class="scan-box" id="searchScanBox" style="margin:0;">
-        <div id="searchReader"></div>
-        <div class="scan-frame on"></div>
+      <div class="scan-box" id="searchScanBox" style="margin:0; aspect-ratio:auto; height:300px;">
+        <div id="searchReader" style="width:100%; height:100%;"></div>
       </div>
       <div class="hint" id="searchScanHint" style="margin-top:10px;">Point the camera at the barcode…</div>
     </div>
@@ -818,7 +817,7 @@
 <script>
 const el = id => document.getElementById(id);
 
-const APP_VERSION = 'v7.8';
+const APP_VERSION = 'v7.9';
 document.getElementById('appVersion').textContent = APP_VERSION;
 
 /* ---------- slide-in menu ---------- */
@@ -2550,9 +2549,10 @@ async function openSearchScanner(){
   el('searchScanModal').classList.add('open');
   el('searchScanHint').textContent = 'Starting camera…';
 
-  // Let the modal paint and give #searchReader real dimensions BEFORE starting,
-  // otherwise the video track attaches to a 0-size / hidden element → black screen.
-  await new Promise(r=> setTimeout(r, 350));
+  // Wait for the modal to actually lay out (two animation frames + a delay),
+  // otherwise the video attaches to a 0-height element → black screen.
+  await new Promise(r=> requestAnimationFrame(()=> requestAnimationFrame(r)));
+  await new Promise(r=> setTimeout(r, 400));
 
   searchScanner = new Html5Qrcode("searchReader", {
     formatsToSupport:[
@@ -2567,9 +2567,8 @@ async function openSearchScanner(){
   });
 
   const config = {
-    fps: 15, disableFlip: true,
-    qrbox: (vw, vh)=>{ const w = Math.floor(Math.min(vw * 0.9, 480)); return { width:w, height:Math.floor(w*0.5) }; },
-    videoConstraints: { facingMode: 'environment', width:{ideal:1920}, height:{ideal:1080}, advanced:[{ focusMode:'continuous' }] }
+    fps: 10, disableFlip: true,
+    qrbox: (vw, vh)=>{ const w = Math.floor(Math.min(vw * 0.85, 420)); return { width:w, height:Math.floor(w*0.5) }; }
   };
 
   const onFound = (code)=>{
