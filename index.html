@@ -421,6 +421,22 @@
   .hist-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
   .hist-head .t{font-weight:700; font-size:15px;}
   .hist-empty{ text-align:center; padding:26px 10px; color:var(--text-faint); font-size:13px; }
+  .scan-modal{
+    display:none; position:fixed; inset:0; z-index:70;
+    background:rgba(10,14,22,0.72); align-items:center; justify-content:center; padding:18px;
+  }
+  .scan-modal.open{ display:flex; }
+  .scan-modal-inner{
+    width:min(94vw, 460px); background:var(--surface); border-radius:16px;
+    padding:16px; box-shadow:0 12px 40px rgba(0,0,0,0.4);
+  }
+  .scan-modal-head{
+    display:flex; align-items:center; justify-content:space-between;
+    font-weight:700; font-size:15px; margin-bottom:12px; color:var(--text);
+  }
+  .search-row{ display:flex; gap:8px; margin-bottom:12px; }
+  .search-row input{ flex:1; margin:0; }
+  .search-cam{ flex-shrink:0; width:48px; padding:0; font-size:20px; background:var(--surface-2); }
   .hist-item{
     display:flex; align-items:center; gap:10px;
     border:1px solid var(--border); background:var(--surface-2);
@@ -757,13 +773,31 @@
     <button class="btn btn-primary btn-wide save-btn" id="btnSave" disabled>💾 Save part &amp; continue to next</button>
   </div>
 
+  <!-- Live search-scanner modal -->
+  <div class="scan-modal" id="searchScanModal">
+    <div class="scan-modal-inner">
+      <div class="scan-modal-head">
+        <span>📷 Scan a barcode to search</span>
+        <button class="menu-x" id="searchScanClose" aria-label="Close">✕</button>
+      </div>
+      <div class="scan-box" id="searchScanBox" style="margin:0;">
+        <div id="searchReader"></div>
+        <div class="scan-frame on"></div>
+      </div>
+      <div class="hint" id="searchScanHint" style="margin-top:10px;">Point the camera at the barcode…</div>
+    </div>
+  </div>
+
   <!-- History -->
   <div class="card" id="cardHist">
     <div class="hist-head">
       <div class="t">Logged parts</div>
     </div>
     <input type="file" accept="application/json,.json" id="fileImport" style="display:none;">
-    <input type="text" id="histSearch" placeholder="🔍 Search part no. / description / machine" style="width:100%; margin-bottom:12px;">
+    <div class="search-row">
+      <input type="text" id="histSearch" placeholder="🔍 Search part no. / description / machine">
+      <button class="btn search-cam" id="btnSearchCam" title="Scan a barcode with the camera">📷</button>
+    </div>
     <div id="histList">
       <div class="hist-empty">No parts logged yet — start by scanning a barcode</div>
     </div>
@@ -784,7 +818,7 @@
 <script>
 const el = id => document.getElementById(id);
 
-const APP_VERSION = 'v7.3';
+const APP_VERSION = 'v7.6';
 document.getElementById('appVersion').textContent = APP_VERSION;
 
 /* ---------- slide-in menu ---------- */
@@ -1252,7 +1286,7 @@ async function readBarcodeWithGemini(file){
 
 function setBarcode(code){
   cancelEdit();
-  current.barcode = code;
+  current.barcode = bcKey(code);
   current.devices = []; current.subs = []; current.conf = null; current.photo = null; current.desc = '';
   current.descOriginal = ''; current.descLang = ''; current.descPhoto = null;
   el('readout').style.display='flex';
@@ -1298,8 +1332,12 @@ el('qaAdd').addEventListener('click', ()=>{
   window.scrollTo({ top: 0, behavior: 'smooth' });
 });
 
+// normalise a barcode for reliable matching (trim spaces, unify to string)
+function bcKey(v){ return String(v == null ? '' : v).trim(); }
+
 function updateDupNotices(code){
-  const ex = code ? entries.find(e=> e.barcode === code) : null;
+  const key = bcKey(code);
+  const ex = key ? entries.find(e=> bcKey(e.barcode) === key) : null;
   if(!ex){ hideDupNotices(); return; }
 
   toast('This part was logged before — see the notes below');
@@ -2320,7 +2358,7 @@ el('btnSave').addEventListener('click', ()=>{
     return;
   }
 
-  const existing = entries.find(e => e.barcode === current.barcode);
+  const existing = entries.find(e => bcKey(e.barcode) === bcKey(current.barcode));
 
   if(existing){
     const exBox = existing.box || 1;
@@ -2437,7 +2475,7 @@ el('fileImport').addEventListener('change', e=>{
     } else {
       clean.forEach(item=>{
         const inc = normalizeEntry(item);
-        const match = entries.find(ex=> ex.barcode === inc.barcode && (ex.box||1) === (inc.box||1));
+        const match = entries.find(ex=> bcKey(ex.barcode) === bcKey(inc.barcode) && (ex.box||1) === (inc.box||1));
         if(match){
           match.qty += inc.qty;
           match.lastTime = inc.lastTime || match.lastTime;
@@ -2463,7 +2501,7 @@ el('fileImport').addEventListener('change', e=>{
 function normalizeEntry(e){
   return {
     id: e.id || (Date.now() + Math.floor(Math.random()*100000)),
-    barcode: String(e.barcode),
+    barcode: bcKey(e.barcode),
     devices: Array.isArray(e.devices) ? e.devices : [],
     subs: Array.isArray(e.subs) ? e.subs : [],
     conf: e.conf || 'Low',
@@ -2498,6 +2536,67 @@ el('histSearch').addEventListener('input', e=>{
   histFilter = e.target.value;
   renderHistory();
 });
+
+// search by scanning a barcode with a LIVE camera
+let searchScanner = null;
+let searchScanRunning = false;
+
+async function openSearchScanner(){
+  if(typeof Html5Qrcode === 'undefined'){ toast('Scanner library not loaded'); return; }
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    toast('Camera blocked: page must be HTTPS'); return;
+  }
+  el('searchScanModal').classList.add('open');
+  el('searchScanHint').textContent = 'Point the camera at the barcode…';
+
+  searchScanner = new Html5Qrcode("searchReader", {
+    formatsToSupport:[
+      Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.CODE_39,
+      Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8,
+      Html5QrcodeSupportedFormats.UPC_A, Html5QrcodeSupportedFormats.UPC_E,
+      Html5QrcodeSupportedFormats.ITF, Html5QrcodeSupportedFormats.QR_CODE,
+      Html5QrcodeSupportedFormats.DATA_MATRIX
+    ],
+    experimentalFeatures: { useBarCodeDetectorIfSupported: true },
+    verbose:false
+  });
+
+  const config = {
+    fps: 15, disableFlip: true,
+    qrbox: (vw, vh)=>{ const w = Math.floor(Math.min(vw * 0.9, 480)); return { width:w, height:Math.floor(w*0.5) }; },
+    videoConstraints: { facingMode: 'environment', width:{ideal:1920}, height:{ideal:1080}, advanced:[{ focusMode:'continuous' }] }
+  };
+
+  const onFound = (code)=>{
+    if(!code || code.length < 4) return;
+    el('histSearch').value = code;
+    histFilter = code;
+    renderHistory();
+    closeSearchScanner();
+    toast('Showing results for ' + code);
+    el('histSearch').scrollIntoView({ behavior:'smooth', block:'center' });
+  };
+
+  try{
+    await searchScanner.start({ facingMode:'environment' }, config, onFound, ()=>{});
+    searchScanRunning = true;
+  }catch(err){
+    console.error('search camera failed:', err);
+    el('searchScanHint').textContent = 'Could not start the camera. Close and type the number instead.';
+  }
+}
+
+function closeSearchScanner(){
+  el('searchScanModal').classList.remove('open');
+  if(searchScanner && searchScanRunning){
+    searchScanner.stop().then(()=>{ try{ searchScanner.clear(); }catch(_){ } searchScanner=null; searchScanRunning=false; })
+      .catch(()=>{ searchScanner=null; searchScanRunning=false; });
+  } else { searchScanner = null; searchScanRunning = false; }
+}
+
+el('btnSearchCam').addEventListener('click', openSearchScanner);
+el('searchScanClose').addEventListener('click', closeSearchScanner);
+el('searchScanModal').addEventListener('click', e=>{ if(e.target === el('searchScanModal')) closeSearchScanner(); });
 
 function renderHistory(){
   const list = el('histList');
