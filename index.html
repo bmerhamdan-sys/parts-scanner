@@ -647,7 +647,7 @@
       <div class="step-label"><div class="step-num">1</div><div class="step-title">What are you logging?</div></div>
       <div class="choice-grid">
         <div class="choice-btn" id="consTypePhila" data-type="PhilaBox">PhilaBox<br><span style="font-size:11px;color:var(--text-faint)">1 barcode</span></div>
-        <div class="choice-btn" id="consTypeBox" data-type="BoxStation">Box Station<br><span style="font-size:11px;color:var(--text-faint)">2 barcodes (must match)</span></div>
+        <div class="choice-btn" id="consTypeBox" data-type="BoxStation">Box Station<br><span style="font-size:11px;color:var(--text-faint)">1 barcode</span></div>
       </div>
     </div>
 
@@ -661,9 +661,23 @@
         <button class="btn" id="consManualAdd">Enter</button>
       </div>
       <div class="cons-progress" id="consProgress"></div>
-      <div class="cons-nextwrap" id="consNextWrap">
-        <div class="cons-next-msg" id="consNextMsg">Barcode 1 captured ✓</div>
-        <button class="btn btn-primary btn-wide" id="consNextBtn">📷 Scan barcode 2 (turn the box to the other sticker)</button>
+      <div class="cons-nextwrap" id="consStickerAsk">
+        <div class="cons-next-msg" id="consStickerCode">Barcode captured ✓</div>
+        <!-- normal set (unique barcode) -->
+        <div id="consBtnsNormal">
+          <button class="btn btn-wide" id="consStickerOk" style="background:var(--green); border-color:var(--green); color:#fff; margin-bottom:8px;">✓ Sticker OK — Insert</button>
+          <div style="display:flex; gap:8px;">
+            <button class="btn btn-wide" id="consStickerBad" style="background:var(--amber); border-color:var(--amber); color:#fff;">⚠ Sticker not OK</button>
+            <button class="btn btn-wide" id="consStickerCancel" style="background:var(--surface-2); color:var(--text);">✕ Cancel reading</button>
+          </div>
+        </div>
+        <!-- duplicate set (insert blocked) -->
+        <div id="consBtnsDup" style="display:none;">
+          <div style="display:flex; gap:8px;">
+            <button class="btn btn-wide" id="consDupLog" style="background:var(--laser); border-color:var(--laser); color:#fff;">⚠ Log duplicate case</button>
+            <button class="btn btn-wide" id="consDupCancel" style="background:var(--surface-2); color:var(--text);">✕ Cancel reading</button>
+          </div>
+        </div>
       </div>
       <div class="cons-alert" id="consAlert"></div>
     </div>
@@ -910,7 +924,27 @@
 <script>
 const el = id => document.getElementById(id);
 
-const APP_VERSION = 'v8.4';
+// global scan confirmation beep (Web Audio, no asset) + short vibrate
+let _scanAudioCtx = null;
+function scanBeep(){
+  try{
+    _scanAudioCtx = _scanAudioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    const ctx = _scanAudioCtx;
+    if(ctx.state === 'suspended') ctx.resume();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(880, ctx.currentTime);
+    gain.gain.setValueAtTime(0.001, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.35, ctx.currentTime + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.18);
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.start(); osc.stop(ctx.currentTime + 0.2);
+    if(navigator.vibrate) navigator.vibrate(60);
+  }catch(e){}
+}
+
+const APP_VERSION = 'v8.7';
 document.getElementById('appVersion').textContent = APP_VERSION;
 
 /* ---------- slide-in menu ---------- */
@@ -1240,8 +1274,8 @@ let searchScanMode = false;
 let consScanMode = false;
 function onBarcode(code){
   if(!cameraRunning) return;
+  scanBeep();   // scan sound for the whole app
   if(consScanMode){
-    // stay on the camera for multi-barcode capture; consCapture decides when to stop
     consCapture(code);
     return;
   }
@@ -3068,25 +3102,7 @@ function exportWord(){
 
 
 /* ================= CONSUMABLES INVENTORY ================= */
-// short confirmation beep on a successful scan (Web Audio — no asset needed)
-let _consAudioCtx = null;
-function consBeep(){
-  try{
-    _consAudioCtx = _consAudioCtx || new (window.AudioContext || window.webkitAudioContext)();
-    const ctx = _consAudioCtx;
-    if(ctx.state === 'suspended') ctx.resume();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(880, ctx.currentTime);         // clear "ping"
-    gain.gain.setValueAtTime(0.001, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.35, ctx.currentTime + 0.01);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.18);
-    osc.connect(gain); gain.connect(ctx.destination);
-    osc.start(); osc.stop(ctx.currentTime + 0.2);
-    if(navigator.vibrate) navigator.vibrate(60);
-  }catch(e){}
-}
+function consBeep(){ scanBeep(); }   // alias → global scanBeep
 const CONS_KEY = 'partsScanner.consumables.v1';
 let consumables = [];          // {id, type, codes:[], status:'ok'|'bad', reason, time}
 let consType = null;           // 'PhilaBox' | 'BoxStation'
@@ -3112,6 +3128,7 @@ function consRestore(){
           type: c.type || 'PhilaBox',
           codes: c.codes.map(x=> bcKey(x)),
           status: c.status === 'bad' ? 'bad' : 'ok',
+          problem: c.problem || (c.status==='bad' ? 'duplicate' : ''),
           reason: c.reason || '',
           time: c.time || new Date().toLocaleString('en-GB',{hour12:true})
         }));
@@ -3149,7 +3166,7 @@ function resetConsFlow(){
   el('consTypeBox').classList.remove('selected');
   el('consScanCard').style.display = 'none';
   el('consProgress').innerHTML = '';
-  el('consNextWrap').classList.remove('show');
+  el('consStickerAsk').classList.remove('show');
   hideConsAlert();
   el('consManual').value = '';
 }
@@ -3157,7 +3174,7 @@ function resetConsFlow(){
 function startConsType(type){
   consType = type; consScanTarget = 0; consCodesBuf = []; consRepairId = null;
   consLastRead = { code:null, t:0 };
-  el('consNextWrap').classList.remove('show');
+  el('consStickerAsk').classList.remove('show');
   el('consTypePhila').classList.toggle('selected', type === 'PhilaBox');
   el('consTypeBox').classList.toggle('selected', type === 'BoxStation');
   el('consScanCard').style.display = 'block';
@@ -3167,20 +3184,14 @@ function startConsType(type){
   el('consScanCard').scrollIntoView({behavior:'smooth', block:'start'});
 }
 
-function neededCodes(){ return consType === 'BoxStation' ? 2 : 1; }
+function neededCodes(){ return 1; }
 
 function updateConsProgress(){
-  const need = neededCodes();
-  const title = consRepairId
-    ? 'Re-scan to repair'
-    : (consType === 'BoxStation' ? 'Scan both barcodes (must match)' : 'Scan the barcode');
-  el('consScanTitle').textContent = title;
-  let html = '';
-  for(let i=0;i<need;i++){
-    const done = consCodesBuf[i];
-    html += `<div>Barcode ${i+1}: ${done ? '<span class="code">'+escapeHtml(done)+'</span> ✓' : (i===consScanTarget ? '<b>scanning…</b>' : 'waiting')}</div>`;
-  }
-  el('consProgress').innerHTML = html;
+  el('consScanTitle').textContent = consRepairId ? 'Re-scan to repair' : 'Scan the barcode';
+  const done = consCodesBuf[0];
+  el('consProgress').innerHTML = done
+    ? '<div>Barcode: <span class="code">'+escapeHtml(done)+'</span> ✓</div>'
+    : '<div><b>scanning…</b></div>';
 }
 
 function showConsAlert(html, kind){
@@ -3201,97 +3212,79 @@ function consCapture(code){
   if(code === consLastRead.code && now - consLastRead.t < 1200){ return; }
   consLastRead = { code, t: now };
 
-  consCodesBuf[consScanTarget] = code;
-  consBeep();                                    // audible confirmation
-  toast('Barcode ' + (consScanTarget+1) + ': ' + code);
-
-  const need = neededCodes();
-  if(consScanTarget < need - 1){
-    // PAUSE the camera and wait for a tap, so the same sticker can't be read twice
-    if(consCamRunning) stopConsCam();
-    consScanTarget++;
-    updateConsProgress();
-    el('consNextMsg').textContent = 'Barcode 1 captured ✓  (' + code + ')';
-    el('consNextWrap').classList.add('show');
-    return;
-  }
-
-  // all codes for this unit collected → validate
-  updateConsProgress();
+  consCodesBuf[0] = code;
+  toast('Barcode: ' + code);
   if(consCamRunning) stopConsCam();
-  el('consNextWrap').classList.remove('show');
-  validateAndSaveCons();
+  updateConsProgress();
+
+  // during a repair we save straight away; otherwise confirm the sticker first
+  if(consRepairId){ validateAndSaveCons(false); return; }
+
+  // pre-check duplicates: if duplicate, block Insert and show the duplicate options
+  const dup = consFindByCode(code, null).length > 0;
+  if(dup){
+    el('consStickerCode').innerHTML = 'Barcode <span class="code">' + escapeHtml(code) + '</span><br><span style="color:var(--laser); font-weight:700;">⚠ Duplicate — already used by another box. Change the sticker.</span>';
+    el('consBtnsNormal').style.display = 'none';
+    el('consBtnsDup').style.display = 'block';
+  } else {
+    el('consStickerCode').textContent = 'Barcode captured ✓  (' + code + ')';
+    el('consBtnsNormal').style.display = 'block';
+    el('consBtnsDup').style.display = 'none';
+  }
+  el('consStickerAsk').classList.add('show');
 }
 
-function validateAndSaveCons(){
-  const codes = consCodesBuf.slice(0, neededCodes()).map(bcKey);
+function validateAndSaveCons(wrongSticker){
+  const code = bcKey(consCodesBuf[0]);
+  el('consStickerAsk').classList.remove('show');
 
-  // Rule 1 (BoxStation): the two codes must be identical
-  let mismatch = false;
-  if(consType === 'BoxStation' && codes[0] !== codes[1]){
-    mismatch = true;
-  }
-
-  // Rule 2: each code must be UNIQUE across other consumables
-  const exceptId = consRepairId;
-  let clash = [];
-  codes.forEach(c=>{
-    consFindByCode(c, exceptId).forEach(m=>{ if(!clash.includes(m)) clash.push(m); });
-  });
+  const clash = consFindByCode(code, consRepairId);
 
   // ----- REPAIR MODE -----
   if(consRepairId){
     const box = consumables.find(c=> c.id === consRepairId);
     if(!box){ consRepairId = null; return; }
-    if(mismatch){
-      showConsAlert('⚠ <b>Still mismatched.</b> The two barcodes differ:<br>① <span class="code">'+escapeHtml(codes[0])+'</span><br>② <span class="code">'+escapeHtml(codes[1])+'</span><br>Replace the sticker so both match, then re-scan.', 'red');
-      return;
-    }
     if(clash.length){
       showConsAlert('⚠ <b>This barcode is still used by another box.</b> Change the sticker to a unique number, then re-scan.', 'red');
       return;
     }
-    box.codes = codes; box.status = 'ok'; box.reason = '';
+    box.codes = [code]; box.status = 'ok'; box.problem = ''; box.reason = '';
     box.time = new Date().toLocaleString('en-GB',{hour12:true});
     consRepairId = null;
-    consPersist(); renderConsList();
+    consPersist(); syncConsTabs();
     showConsAlert('✓ <b>Fixed.</b> The box moved to the Healthy list.', 'green');
-    consCodesBuf = []; consScanTarget = 0;
+    consCodesBuf = [];
     return;
   }
 
   // ----- NORMAL ADD -----
-  let status = 'ok', reason = '';
-  if(mismatch){
-    status = 'bad';
-    reason = 'The two barcodes on this Box Station do not match (① ' + codes[0] + ' vs ② ' + codes[1] + ').';
-  }
+  let status = 'ok', problem = '', reason = '';
   if(clash.length){
-    status = 'bad';
-    reason = (reason ? reason + ' ' : '') + 'Duplicate barcode — already used by another box. Change the sticker.';
+    status = 'bad'; problem = 'duplicate';
+    reason = 'Duplicate barcode — already used by another box. Change the sticker.';
+  } else if(wrongSticker){
+    status = 'bad'; problem = 'wrong-sticker';
+    reason = 'Sticker fitted in the wrong position (supply issue) — needs a new sticker.';
   }
 
   const entry = {
     id: Date.now()+Math.floor(Math.random()*1e5),
-    type: consType,
-    codes: codes,
-    status, reason,
+    type: consType, codes: [code],
+    status, problem, reason,
     time: new Date().toLocaleString('en-GB',{hour12:true})
   };
   consumables.push(entry);
   consPersist();
   el('consCount').textContent = consumables.length;
-  renderConsList();
 
   if(status === 'bad'){
     consTab = 'bad'; syncConsTabs();
-    showConsAlert('⚠ <b>Saved with a problem — change the sticker.</b><br>' + escapeHtml(reason) + '<br><br>It is in the “Needs fixing” list; tap <b>Fix</b> there after re-labelling.', 'red');
+    showConsAlert('⚠ <b>Saved with a problem.</b><br>' + escapeHtml(reason) + '<br><br>See the “Needs fixing” list; tap <b>Fix</b> after re-labelling.', 'red');
   } else {
-    showConsAlert('✓ <b>Saved.</b> ' + escapeHtml(codes.join(' = ')), 'green');
+    syncConsTabs();
+    showConsAlert('✓ <b>Saved.</b> ' + escapeHtml(code), 'green');
   }
-  // ready for the next unit of the same type
-  consCodesBuf = []; consScanTarget = 0;
-  updateConsProgress();
+  consCodesBuf = [];
 }
 
 /* ----- consumables camera: REUSE the one main scanner (no 2nd camera) ----- */
@@ -3401,11 +3394,20 @@ el('consTypePhila').addEventListener('click', ()=> startConsType('PhilaBox'));
 el('consTypeBox').addEventListener('click', ()=> startConsType('BoxStation'));
 el('consStartCam').addEventListener('click', startConsCam);
 el('consStopCam').addEventListener('click', stopConsCam);
-el('consNextBtn').addEventListener('click', ()=>{
-  el('consNextWrap').classList.remove('show');
-  consLastRead = { code:null, t:0 };            // allow a different (or same) code now
-  startConsCam();
-});
+el('consStickerOk').addEventListener('click', ()=> validateAndSaveCons(false));
+el('consStickerBad').addEventListener('click', ()=> validateAndSaveCons(true));
+function cancelConsReading(){
+  el('consStickerAsk').classList.remove('show');
+  consCodesBuf = [];
+  consLastRead = { code:null, t:0 };
+  hideConsAlert();
+  updateConsProgress();
+  toast('Reading cancelled');
+}
+el('consStickerCancel').addEventListener('click', cancelConsReading);
+el('consDupCancel').addEventListener('click', cancelConsReading);
+// log the duplicate as a problem entry (Insert is intentionally not allowed)
+el('consDupLog').addEventListener('click', ()=> validateAndSaveCons(false));
 el('consManualAdd').addEventListener('click', ()=>{
   const v = el('consManual').value.trim();
   if(!v){ toast('Type a barcode'); return; }
@@ -3426,28 +3428,31 @@ function consGroups(){
     phila: consumables.filter(c=> c.type==='PhilaBox'),
     box:   consumables.filter(c=> c.type==='BoxStation'),
     bad:   consumables.filter(c=> c.status==='bad'),
-    ok:    consumables.filter(c=> c.status==='ok')
+    ok:    consumables.filter(c=> c.status==='ok'),
+    dupProblem:   consumables.filter(c=> c.status==='bad' && c.problem==='duplicate'),
+    wrongProblem: consumables.filter(c=> c.status==='bad' && c.problem==='wrong-sticker')
   };
 }
 
 function exportConsWord(){
   if(consumables.length===0){ toast('No consumables to export'); return; }
   const site = getProject(), tech = getTech();
-  const rowsHtml = consumables.map((c,i)=>{
-    const codeText = c.type==='BoxStation' ? c.codes.join(' &nbsp;=&nbsp; ') : (c.codes[0]||'');
-    const bg = (i%2===1) ? ' style="background:#eef1f5;"' : '';
-    const statusCell = c.status==='bad'
-      ? '<span style="color:#b00; font-weight:bold;">⚠ Problem</span>'
-      : '<span style="color:#1a7a4a; font-weight:bold;">✓ OK</span>';
+  const g = consGroups();
+  const sectionRows = (list, i0)=> list.map((c,i)=>{
+    const bg = ((i0+i)%2===1) ? ' style="background:#eef1f5;"' : '';
     return `<tr${bg}>
-      <td style="text-align:center;">${i+1}</td>
+      <td style="text-align:center;">${i0+i+1}</td>
       <td>${escapeHtml(c.type)}</td>
-      <td style="font-family:'Courier New',monospace;">${escapeHtml(codeText)}</td>
-      <td style="text-align:center;">${statusCell}</td>
-      <td style="font-size:11px;">${c.status==='bad'?escapeHtml(c.reason):''}</td>
+      <td style="font-family:'Courier New',monospace;">${escapeHtml(c.codes[0]||'')}</td>
       <td style="text-align:center; font-size:11px; color:#555;">${escapeHtml(c.time)}</td>
     </tr>`;
   }).join('');
+  const secTitle = (t, n, color)=> `<tr><td colspan="4" style="background:${color}; color:#fff; font-weight:bold; padding:7px 8px;">${t} (${n})</td></tr>`;
+  let rowsHtml = '';
+  let idx = 0;
+  if(g.ok.length){ rowsHtml += secTitle('✓ Healthy', g.ok.length, '#1a7a4a') + sectionRows(g.ok, idx); idx += g.ok.length; }
+  if(g.dupProblem.length){ rowsHtml += secTitle('⚠ Duplicate sticker — change the sticker', g.dupProblem.length, '#b00') + sectionRows(g.dupProblem, idx); idx += g.dupProblem.length; }
+  if(g.wrongProblem.length){ rowsHtml += secTitle('⚠ Sticker in wrong position — needs new sticker', g.wrongProblem.length, '#d97f00') + sectionRows(g.wrongProblem, idx); idx += g.wrongProblem.length; }
 
   const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
   <head><meta charset="utf-8"><title>Consumables Inventory</title>
@@ -3463,9 +3468,9 @@ function exportConsWord(){
   <body>
     <h1>Consumables Inventory${site?' - '+escapeHtml(site):''}</h1>
     ${tech?`<div class="sub">Prepared by: ${escapeHtml(tech)}</div>`:''}
-    <div class="sub">Exported: ${new Date().toLocaleString('en-GB')} &nbsp;|&nbsp; Total: ${consumables.length} &nbsp;|&nbsp; PhilaBox: ${consGroups().phila.length} &nbsp;|&nbsp; Box Station: ${consGroups().box.length} &nbsp;|&nbsp; Problems: ${consGroups().bad.length}</div>
+    <div class="sub">Exported: ${new Date().toLocaleString('en-GB')} &nbsp;|&nbsp; Total: ${consumables.length} &nbsp;|&nbsp; PhilaBox: ${g.phila.length} &nbsp;|&nbsp; Box Station: ${g.box.length} &nbsp;|&nbsp; Duplicate: ${g.dupProblem.length} &nbsp;|&nbsp; Wrong-position: ${g.wrongProblem.length}</div>
     <table>
-      <thead><tr><th>#</th><th>Type</th><th>Barcode(s)</th><th>Status</th><th>Problem</th><th>Logged at</th></tr></thead>
+      <thead><tr><th>#</th><th>Type</th><th>Barcode</th><th>Logged at</th></tr></thead>
       <tbody>${rowsHtml}</tbody>
     </table>
   </body></html>`;
@@ -3482,13 +3487,15 @@ function exportConsWord(){
 function exportConsExcel(){
   if(consumables.length===0){ toast('No consumables to export'); return; }
   if(typeof XLSX === 'undefined'){ toast('Excel library not loaded'); return; }
+  const problemLabel = c=> c.problem==='duplicate' ? 'Duplicate sticker'
+    : c.problem==='wrong-sticker' ? 'Wrong-position sticker' : '';
   const rows = consumables.map((c,i)=>({
     '#': i+1,
     'Type': c.type,
-    'Barcode 1': c.codes[0]||'',
-    'Barcode 2': c.codes[1]||'',
+    'Barcode': c.codes[0]||'',
     'Status': c.status==='bad' ? 'Problem' : 'OK',
-    'Problem': c.status==='bad' ? c.reason : '',
+    'Problem type': problemLabel(c),
+    'Details': c.status==='bad' ? c.reason : '',
     'Logged at': c.time
   }));
   const ws = XLSX.utils.json_to_sheet(rows, { origin:'A3' });
@@ -3496,7 +3503,7 @@ function exportConsExcel(){
     ['Consumables Inventory' + (getProject()?' - '+getProject():'')],
     [(getTech()?'Prepared by: '+getTech()+'   ':'') + 'Exported: ' + new Date().toLocaleString('en-GB')]
   ], { origin:'A1' });
-  ws['!cols'] = [{wch:4},{wch:14},{wch:22},{wch:22},{wch:10},{wch:50},{wch:22}];
+  ws['!cols'] = [{wch:4},{wch:14},{wch:24},{wch:10},{wch:22},{wch:50},{wch:22}];
   ws['!freeze'] = { xSplit:0, ySplit:3 };
   const lastCol = XLSX.utils.encode_col(Object.keys(rows[0]).length - 1);
   ws['!autofilter'] = { ref:'A3:'+lastCol+(rows.length+3) };
