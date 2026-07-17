@@ -155,6 +155,49 @@
   .menu-item.danger{ color:var(--laser); border-color:rgba(224,52,36,0.3); }
   .menu-item.danger:hover{ background:rgba(224,52,36,0.06); }
   .menu-foot{ margin-top:auto; padding:16px 18px; font-family:var(--font-mono); font-size:11px; color:var(--text-faint); }
+  /* ---------- consumables view ---------- */
+  .cons-view{
+    display:none; position:fixed; inset:0; z-index:55; background:var(--bg);
+    overflow-y:auto; padding:0 16px 40px;
+  }
+  .cons-view.open{ display:block; }
+  .cons-top{
+    position:sticky; top:0; z-index:5; background:var(--bg);
+    padding-top:14px; padding-bottom:12px; margin:0 -16px 4px; padding-left:16px; padding-right:16px;
+    box-shadow:0 2px 8px rgba(10,14,22,0.06); border-bottom:1px solid var(--border);
+  }
+  .cons-progress{
+    margin-top:12px; font-size:13px; color:var(--text-dim); line-height:1.8;
+  }
+  .cons-progress .code{ font-family:var(--font-mono); font-weight:700; color:var(--text); }
+  .cons-alert{
+    display:none; margin-top:12px; border-radius:12px; padding:12px 14px;
+    font-size:13px; line-height:1.7; font-weight:600;
+  }
+  .cons-alert.show{ display:block; }
+  .cons-alert.red{ background:rgba(224,52,36,0.1); border:1.5px solid var(--laser); color:var(--laser); }
+  .cons-alert.green{ background:rgba(26,122,74,0.1); border:1.5px solid var(--green); color:var(--green); }
+  .cons-tabs{ display:flex; gap:8px; margin-bottom:12px; }
+  .cons-tab{
+    flex:1; padding:9px; border-radius:9px; border:1px solid var(--border);
+    background:var(--surface-2); color:var(--text-dim); font-weight:600; font-size:12.5px;
+    cursor:pointer; font-family:var(--font-ui);
+  }
+  .cons-tab.active{ background:var(--blue); border-color:var(--blue); color:#fff; }
+  .cons-tab.bad-has{ border-color:var(--laser); color:var(--laser); }
+  .cons-tab.bad-has.active{ background:var(--laser); border-color:var(--laser); color:#fff; }
+  .cons-item{
+    display:flex; align-items:center; gap:10px; padding:11px 0; border-bottom:1px solid var(--border);
+  }
+  .cons-item:last-child{ border-bottom:none; }
+  .cons-item .ci-body{ flex:1; min-width:0; }
+  .cons-item .ci-type{ font-size:11px; font-weight:700; color:var(--blue); text-transform:uppercase; letter-spacing:.5px; }
+  .cons-item .ci-code{ font-family:var(--font-mono); font-size:13.5px; font-weight:600; color:var(--text); direction:ltr; word-break:break-all; }
+  .cons-item .ci-meta{ font-size:11.5px; color:var(--text-faint); margin-top:2px; }
+  .cons-item .ci-del{ background:none; border:none; color:var(--text-faint); font-size:16px; cursor:pointer; padding:4px 8px; }
+  .cons-item .ci-del:hover{ color:var(--laser); }
+  .cons-item .ci-fix{ background:var(--amber); border:none; color:#fff; font-size:11.5px; font-weight:700; border-radius:8px; padding:6px 10px; cursor:pointer; }
+  .cons-item.bad{ background:rgba(224,52,36,0.04); border-radius:8px; padding-left:8px; padding-right:8px; }
   .header-right{ display:flex; align-items:center; gap:8px; }
   .counter-pill{
     background:var(--surface); border:1px solid var(--border);
@@ -570,12 +613,69 @@
     </div>
 
     <div class="menu-section">
+      <div class="menu-label">Modules</div>
+      <button class="menu-item" id="btnOpenConsumables">📦 Consumables Inventory</button>
+    </div>
+
+    <div class="menu-section">
       <div class="menu-label">Appearance</div>
       <button class="menu-item" id="btnTheme">🌙 Switch day / night theme</button>
     </div>
 
     <div class="menu-foot"><span id="appVersionMenu"></span></div>
   </aside>
+
+  <!-- ================= CONSUMABLES INVENTORY VIEW ================= -->
+  <div class="cons-view" id="consView">
+    <header class="top cons-top">
+      <div class="brand">
+        <button class="theme-btn" id="consBack" title="Back to spare parts">←</button>
+        <div class="brand-text">
+          <div class="t1">Consumables Inventory</div>
+          <div class="t2">PhilaBox · Box Station</div>
+        </div>
+      </div>
+      <div class="header-right">
+        <div class="counter-pill">Logged <b id="consCount">0</b></div>
+      </div>
+    </header>
+
+    <div class="card">
+      <div class="step-label"><div class="step-num">1</div><div class="step-title">What are you logging?</div></div>
+      <div class="choice-grid">
+        <div class="choice-btn" id="consTypePhila" data-type="PhilaBox">PhilaBox<br><span style="font-size:11px;color:var(--text-faint)">1 barcode</span></div>
+        <div class="choice-btn" id="consTypeBox" data-type="BoxStation">Box Station<br><span style="font-size:11px;color:var(--text-faint)">2 barcodes (must match)</span></div>
+      </div>
+    </div>
+
+    <div class="card dim" id="consScanCard" style="display:none;">
+      <div class="step-label"><div class="step-num">2</div><div class="step-title" id="consScanTitle">Scan barcode</div></div>
+      <div class="scan-box idle" id="consScanBox" style="aspect-ratio:auto; height:300px;"><div id="consReader" style="width:100%; height:100%;"></div></div>
+      <button class="btn btn-primary btn-wide" id="consStartCam" style="margin-top:12px;">▶ Start camera</button>
+      <button class="btn btn-stop btn-wide" id="consStopCam" style="display:none; margin-top:12px;">⏹ Stop camera</button>
+      <div class="scan-row" style="margin-top:10px;">
+        <input type="text" id="consManual" placeholder="Or type the barcode">
+        <button class="btn" id="consManualAdd">Enter</button>
+      </div>
+      <div class="cons-progress" id="consProgress"></div>
+      <div class="cons-alert" id="consAlert"></div>
+    </div>
+
+    <div class="card" id="consListCard">
+      <div class="hist-head">
+        <div class="t">Logged consumables</div>
+        <div style="display:flex; gap:6px;">
+          <button class="btn export-btn word" id="consWord" style="font-size:12px;">📄 Word</button>
+          <button class="btn export-btn" id="consExcel" style="font-size:12px; background:var(--green); border-color:var(--green);">📊 Excel</button>
+        </div>
+      </div>
+      <div class="cons-tabs">
+        <button class="cons-tab active" id="consTabOk" data-tab="ok">✓ Healthy</button>
+        <button class="cons-tab" id="consTabBad" data-tab="bad">⚠ Needs fixing</button>
+      </div>
+      <div id="consList"></div>
+    </div>
+  </div>
 
   <!-- STEP 1: Scan -->
   <div class="card" id="cardScan">
@@ -803,7 +903,7 @@
 <script>
 const el = id => document.getElementById(id);
 
-const APP_VERSION = 'v8.0';
+const APP_VERSION = 'v8.2';
 document.getElementById('appVersion').textContent = APP_VERSION;
 
 /* ---------- slide-in menu ---------- */
@@ -2421,7 +2521,8 @@ el('btnExportData').addEventListener('click', ()=>{
     version: APP_VERSION,
     exportedAt: new Date().toISOString(),
     count: entries.length,
-    entries: entries
+    entries: entries,
+    consumables: consumables
   };
   const blob = new Blob([JSON.stringify(payload)], { type:'application/json' });
   const url = URL.createObjectURL(blob);
@@ -2483,6 +2584,26 @@ el('fileImport').addEventListener('change', e=>{
           entries.push(inc);
         }
       });
+    }
+    // also import consumables if present in the backup
+    if(Array.isArray(data.consumables)){
+      if(choice === 'replace'){
+        consumables = data.consumables.filter(c=> c && Array.isArray(c.codes) && c.codes.length)
+          .map(c=>({ id:c.id||(Date.now()+Math.floor(Math.random()*1e5)), type:c.type||'PhilaBox',
+                     codes:c.codes.map(bcKey), status:c.status==='bad'?'bad':'ok', reason:c.reason||'',
+                     time:c.time||new Date().toLocaleString('en-GB',{hour12:true}) }));
+      } else {
+        data.consumables.forEach(c=>{
+          if(!c || !Array.isArray(c.codes) || !c.codes.length) return;
+          const exists = consumables.some(x=> x.codes.join('|') === c.codes.map(bcKey).join('|'));
+          if(!exists){
+            consumables.push({ id:Date.now()+Math.floor(Math.random()*1e5), type:c.type||'PhilaBox',
+              codes:c.codes.map(bcKey), status:c.status==='bad'?'bad':'ok', reason:c.reason||'',
+              time:c.time||new Date().toLocaleString('en-GB',{hour12:true}) });
+          }
+        });
+      }
+      consPersist();
     }
     renderHistory();
     persist();
@@ -2931,6 +3052,414 @@ function exportWord(){
   setTimeout(()=>URL.revokeObjectURL(url), 3000);
   toast('Word report generated ✓');
 }
+
+
+/* ================= CONSUMABLES INVENTORY ================= */
+const CONS_KEY = 'partsScanner.consumables.v1';
+let consumables = [];          // {id, type, codes:[], status:'ok'|'bad', reason, time}
+let consType = null;           // 'PhilaBox' | 'BoxStation'
+let consScanTarget = 0;        // which barcode we're scanning (0 or 1)
+let consCodesBuf = [];         // codes collected in the current session
+let consCamRunning = false;
+let consScanner = null;
+let consRepairId = null;       // id of the box being repaired, or null
+let consTab = 'ok';
+
+function consPersist(){
+  try{ localStorage.setItem(CONS_KEY, JSON.stringify(consumables)); }catch(e){}
+}
+function consRestore(){
+  try{
+    const raw = localStorage.getItem(CONS_KEY);
+    if(!raw) return;
+    const arr = JSON.parse(raw);
+    if(Array.isArray(arr)){
+      consumables = arr.filter(c=> c && Array.isArray(c.codes) && c.codes.length)
+        .map(c=>({
+          id: c.id || (Date.now()+Math.floor(Math.random()*1e5)),
+          type: c.type || 'PhilaBox',
+          codes: c.codes.map(x=> bcKey(x)),
+          status: c.status === 'bad' ? 'bad' : 'ok',
+          reason: c.reason || '',
+          time: c.time || new Date().toLocaleString('en-GB',{hour12:true})
+        }));
+    }
+  }catch(e){ console.error('cons restore failed', e); }
+}
+
+// find every consumable that already uses a given code (optionally excluding one id)
+function consFindByCode(code, exceptId){
+  const k = bcKey(code);
+  return consumables.filter(c=> c.id !== exceptId && c.codes.some(x=> bcKey(x) === k));
+}
+
+function openConsumables(){
+  closeMenu();
+  el('consView').classList.add('open');
+  el('consCount').textContent = consumables.length;
+  resetConsFlow();
+  renderConsList();
+  window.scrollTo(0,0);
+}
+function closeConsumables(){
+  if(consCamRunning) stopConsCam();
+  el('consView').classList.remove('open');
+}
+
+function resetConsFlow(){
+  consType = null; consScanTarget = 0; consCodesBuf = []; consRepairId = null;
+  el('consTypePhila').classList.remove('selected');
+  el('consTypeBox').classList.remove('selected');
+  el('consScanCard').style.display = 'none';
+  el('consProgress').innerHTML = '';
+  hideConsAlert();
+  el('consManual').value = '';
+}
+
+function startConsType(type){
+  consType = type; consScanTarget = 0; consCodesBuf = []; consRepairId = null;
+  el('consTypePhila').classList.toggle('selected', type === 'PhilaBox');
+  el('consTypeBox').classList.toggle('selected', type === 'BoxStation');
+  el('consScanCard').style.display = 'block';
+  el('consScanCard').classList.remove('dim');
+  hideConsAlert();
+  updateConsProgress();
+  el('consScanCard').scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+function neededCodes(){ return consType === 'BoxStation' ? 2 : 1; }
+
+function updateConsProgress(){
+  const need = neededCodes();
+  const title = consRepairId
+    ? 'Re-scan to repair'
+    : (consType === 'BoxStation' ? 'Scan both barcodes (must match)' : 'Scan the barcode');
+  el('consScanTitle').textContent = title;
+  let html = '';
+  for(let i=0;i<need;i++){
+    const done = consCodesBuf[i];
+    html += `<div>Barcode ${i+1}: ${done ? '<span class="code">'+escapeHtml(done)+'</span> ✓' : (i===consScanTarget ? '<b>scanning…</b>' : 'waiting')}</div>`;
+  }
+  el('consProgress').innerHTML = html;
+}
+
+function showConsAlert(html, kind){
+  const a = el('consAlert');
+  a.className = 'cons-alert show ' + (kind||'red');
+  a.innerHTML = html;
+}
+function hideConsAlert(){ el('consAlert').classList.remove('show'); el('consAlert').innerHTML=''; }
+
+// core: a code was captured (from camera or manual)
+function consCapture(code){
+  code = bcKey(code);
+  if(!code || code.length < 3){ toast('Barcode too short'); return; }
+
+  consCodesBuf[consScanTarget] = code;
+  toast('Barcode ' + (consScanTarget+1) + ': ' + code);
+
+  const need = neededCodes();
+  if(consScanTarget < need - 1){
+    consScanTarget++;
+    updateConsProgress();
+    return;   // keep scanning the next one
+  }
+
+  // all codes for this unit collected → validate
+  updateConsProgress();
+  if(consCamRunning) stopConsCam();
+  validateAndSaveCons();
+}
+
+function validateAndSaveCons(){
+  const codes = consCodesBuf.slice(0, neededCodes()).map(bcKey);
+
+  // Rule 1 (BoxStation): the two codes must be identical
+  let mismatch = false;
+  if(consType === 'BoxStation' && codes[0] !== codes[1]){
+    mismatch = true;
+  }
+
+  // Rule 2: each code must be UNIQUE across other consumables
+  const exceptId = consRepairId;
+  let clash = [];
+  codes.forEach(c=>{
+    consFindByCode(c, exceptId).forEach(m=>{ if(!clash.includes(m)) clash.push(m); });
+  });
+
+  // ----- REPAIR MODE -----
+  if(consRepairId){
+    const box = consumables.find(c=> c.id === consRepairId);
+    if(!box){ consRepairId = null; return; }
+    if(mismatch){
+      showConsAlert('⚠ <b>Still mismatched.</b> The two barcodes differ:<br>① <span class="code">'+escapeHtml(codes[0])+'</span><br>② <span class="code">'+escapeHtml(codes[1])+'</span><br>Replace the sticker so both match, then re-scan.', 'red');
+      return;
+    }
+    if(clash.length){
+      showConsAlert('⚠ <b>This barcode is still used by another box.</b> Change the sticker to a unique number, then re-scan.', 'red');
+      return;
+    }
+    box.codes = codes; box.status = 'ok'; box.reason = '';
+    box.time = new Date().toLocaleString('en-GB',{hour12:true});
+    consRepairId = null;
+    consPersist(); renderConsList();
+    showConsAlert('✓ <b>Fixed.</b> The box moved to the Healthy list.', 'green');
+    consCodesBuf = []; consScanTarget = 0;
+    return;
+  }
+
+  // ----- NORMAL ADD -----
+  let status = 'ok', reason = '';
+  if(mismatch){
+    status = 'bad';
+    reason = 'The two barcodes on this Box Station do not match (① ' + codes[0] + ' vs ② ' + codes[1] + ').';
+  }
+  if(clash.length){
+    status = 'bad';
+    reason = (reason ? reason + ' ' : '') + 'Duplicate barcode — already used by another box. Change the sticker.';
+  }
+
+  const entry = {
+    id: Date.now()+Math.floor(Math.random()*1e5),
+    type: consType,
+    codes: codes,
+    status, reason,
+    time: new Date().toLocaleString('en-GB',{hour12:true})
+  };
+  consumables.push(entry);
+  consPersist();
+  el('consCount').textContent = consumables.length;
+  renderConsList();
+
+  if(status === 'bad'){
+    consTab = 'bad'; syncConsTabs();
+    showConsAlert('⚠ <b>Saved with a problem — change the sticker.</b><br>' + escapeHtml(reason) + '<br><br>It is in the “Needs fixing” list; tap <b>Fix</b> there after re-labelling.', 'red');
+  } else {
+    showConsAlert('✓ <b>Saved.</b> ' + escapeHtml(codes.join(' = ')), 'green');
+  }
+  // ready for the next unit of the same type
+  consCodesBuf = []; consScanTarget = 0;
+  updateConsProgress();
+}
+
+/* ----- consumables live camera (reuses the main scanner pattern) ----- */
+async function startConsCam(){
+  if(typeof Html5Qrcode === 'undefined'){ toast('Scanner not loaded'); return; }
+  if(cameraRunning){ try{ stopCamera(); }catch(_){ } }
+  el('consStartCam').style.display='none';
+  el('consStopCam').style.display='block';
+  el('consScanBox').classList.remove('idle');
+  await new Promise(r=> requestAnimationFrame(()=> requestAnimationFrame(r)));
+  await new Promise(r=> setTimeout(r, 300));
+
+  consScanner = new Html5Qrcode("consReader", {
+    formatsToSupport:[
+      Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.CODE_39,
+      Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8,
+      Html5QrcodeSupportedFormats.UPC_A, Html5QrcodeSupportedFormats.UPC_E,
+      Html5QrcodeSupportedFormats.ITF, Html5QrcodeSupportedFormats.QR_CODE,
+      Html5QrcodeSupportedFormats.DATA_MATRIX
+    ],
+    experimentalFeatures:{ useBarCodeDetectorIfSupported:true }, verbose:false
+  });
+  const config = { fps:10, disableFlip:true,
+    qrbox:(vw,vh)=>{ const w=Math.floor(Math.min(vw*0.85,420)); return {width:w,height:Math.floor(w*0.5)};} };
+  try{
+    await consScanner.start({facingMode:{ideal:'environment'}}, config, (code)=>{
+      if(code && code.length>=3) consCapture(code);
+    }, ()=>{});
+    consCamRunning = true;
+  }catch(err){
+    try{
+      await consScanner.start({facingMode:'environment'}, config, (code)=>{ if(code&&code.length>=3) consCapture(code); }, ()=>{});
+      consCamRunning = true;
+    }catch(err2){
+      el('consStartCam').style.display='block'; el('consStopCam').style.display='none';
+      toast('Camera failed: ' + (err2.message||err2.name));
+    }
+  }
+}
+function stopConsCam(){
+  el('consStartCam').style.display='block';
+  el('consStopCam').style.display='none';
+  el('consScanBox').classList.add('idle');
+  if(consScanner && consCamRunning){
+    consScanner.stop().then(()=>{ try{consScanner.clear();}catch(_){} consScanner=null; consCamRunning=false; })
+      .catch(()=>{ consScanner=null; consCamRunning=false; });
+  } else { consScanner=null; consCamRunning=false; }
+}
+
+/* ----- list rendering + tabs + delete + fix ----- */
+function syncConsTabs(){
+  el('consTabOk').classList.toggle('active', consTab==='ok');
+  el('consTabBad').classList.toggle('active', consTab==='bad');
+  const badCount = consumables.filter(c=>c.status==='bad').length;
+  el('consTabBad').classList.toggle('bad-has', badCount>0);
+  el('consTabBad').textContent = '⚠ Needs fixing' + (badCount? ' ('+badCount+')' : '');
+  el('consTabOk').textContent = '✓ Healthy (' + consumables.filter(c=>c.status==='ok').length + ')';
+  renderConsList();
+}
+
+function renderConsList(){
+  const list = el('consList');
+  const rows = consumables.filter(c=> consTab==='bad' ? c.status==='bad' : c.status==='ok');
+  el('consCount').textContent = consumables.length;
+  if(rows.length===0){
+    list.innerHTML = '<div class="hist-empty">'+(consTab==='bad'?'No problem boxes 🎉':'No consumables logged yet')+'</div>';
+    // keep tab labels fresh
+    const badCount = consumables.filter(c=>c.status==='bad').length;
+    el('consTabBad').classList.toggle('bad-has', badCount>0);
+    el('consTabBad').textContent = '⚠ Needs fixing' + (badCount? ' ('+badCount+')' : '');
+    el('consTabOk').textContent = '✓ Healthy (' + consumables.filter(c=>c.status==='ok').length + ')';
+    return;
+  }
+  list.innerHTML = '';
+  rows.forEach(c=>{
+    const div = document.createElement('div');
+    div.className = 'cons-item' + (c.status==='bad'?' bad':'');
+    const codeText = c.type==='BoxStation'
+      ? c.codes.map(x=>escapeHtml(x)).join(' = ')
+      : escapeHtml(c.codes[0]||'');
+    div.innerHTML = `
+      <div class="ci-body">
+        <div class="ci-type">${escapeHtml(c.type)}</div>
+        <div class="ci-code">${codeText}</div>
+        <div class="ci-meta">${c.status==='bad' ? '⚠ '+escapeHtml(c.reason) : c.time}</div>
+      </div>
+      ${c.status==='bad' ? '<button class="ci-fix">Fix</button>' : ''}
+      <button class="ci-del" title="Delete">✕</button>`;
+    if(c.status==='bad'){
+      div.querySelector('.ci-fix').addEventListener('click', ()=> startConsRepair(c.id));
+    }
+    div.querySelector('.ci-del').addEventListener('click', ()=>{
+      consumables = consumables.filter(x=> x.id !== c.id);
+      consPersist(); syncConsTabs();
+      toast('Deleted');
+    });
+    list.appendChild(div);
+  });
+}
+
+function startConsRepair(id){
+  const box = consumables.find(c=> c.id===id);
+  if(!box) return;
+  consType = box.type; consRepairId = id; consScanTarget = 0; consCodesBuf = [];
+  el('consTypePhila').classList.toggle('selected', box.type==='PhilaBox');
+  el('consTypeBox').classList.toggle('selected', box.type==='BoxStation');
+  el('consScanCard').style.display='block';
+  hideConsAlert();
+  updateConsProgress();
+  showConsAlert('🔧 <b>Repair mode.</b> Re-label the box with a unique number, then scan '+(box.type==='BoxStation'?'both barcodes (they must match).':'the barcode.'), 'green');
+  el('consScanCard').scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+/* ----- wiring ----- */
+el('btnOpenConsumables').addEventListener('click', openConsumables);
+el('consBack').addEventListener('click', closeConsumables);
+el('consTypePhila').addEventListener('click', ()=> startConsType('PhilaBox'));
+el('consTypeBox').addEventListener('click', ()=> startConsType('BoxStation'));
+el('consStartCam').addEventListener('click', startConsCam);
+el('consStopCam').addEventListener('click', stopConsCam);
+el('consManualAdd').addEventListener('click', ()=>{
+  const v = el('consManual').value.trim();
+  if(!v){ toast('Type a barcode'); return; }
+  el('consManual').value='';
+  consCapture(v);
+});
+el('consManual').addEventListener('keydown', e=>{ if(e.key==='Enter') el('consManualAdd').click(); });
+el('consTabOk').addEventListener('click', ()=>{ consTab='ok'; syncConsTabs(); });
+el('consTabBad').addEventListener('click', ()=>{ consTab='bad'; syncConsTabs(); });
+el('consWord').addEventListener('click', exportConsWord);
+el('consExcel').addEventListener('click', exportConsExcel);
+
+consRestore();
+
+/* ----- consumables reports (SEPARATE from spare parts) ----- */
+function consGroups(){
+  return {
+    phila: consumables.filter(c=> c.type==='PhilaBox'),
+    box:   consumables.filter(c=> c.type==='BoxStation'),
+    bad:   consumables.filter(c=> c.status==='bad'),
+    ok:    consumables.filter(c=> c.status==='ok')
+  };
+}
+
+function exportConsWord(){
+  if(consumables.length===0){ toast('No consumables to export'); return; }
+  const site = getProject(), tech = getTech();
+  const rowsHtml = consumables.map((c,i)=>{
+    const codeText = c.type==='BoxStation' ? c.codes.join(' &nbsp;=&nbsp; ') : (c.codes[0]||'');
+    const bg = (i%2===1) ? ' style="background:#eef1f5;"' : '';
+    const statusCell = c.status==='bad'
+      ? '<span style="color:#b00; font-weight:bold;">⚠ Problem</span>'
+      : '<span style="color:#1a7a4a; font-weight:bold;">✓ OK</span>';
+    return `<tr${bg}>
+      <td style="text-align:center;">${i+1}</td>
+      <td>${escapeHtml(c.type)}</td>
+      <td style="font-family:'Courier New',monospace;">${escapeHtml(codeText)}</td>
+      <td style="text-align:center;">${statusCell}</td>
+      <td style="font-size:11px;">${c.status==='bad'?escapeHtml(c.reason):''}</td>
+      <td style="text-align:center; font-size:11px; color:#555;">${escapeHtml(c.time)}</td>
+    </tr>`;
+  }).join('');
+
+  const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+  <head><meta charset="utf-8"><title>Consumables Inventory</title>
+  <style>
+    @page { size:21cm 29.7cm; margin:1.4cm; }
+    body{ font-family:'Segoe UI',Arial; }
+    h1{ font-size:22px; margin:0 0 2px; }
+    .sub{ color:#555; font-size:12px; margin-bottom:2px; }
+    table{ border-collapse:collapse; width:100%; border:1.5px solid #333; margin-top:14px; }
+    th{ background:#1c2230; color:#fff; padding:7px 6px; font-size:11px; border:1px solid #555; }
+    td{ border:1px solid #999; padding:6px; font-size:11.5px; }
+  </style></head>
+  <body>
+    <h1>Consumables Inventory${site?' - '+escapeHtml(site):''}</h1>
+    ${tech?`<div class="sub">Prepared by: ${escapeHtml(tech)}</div>`:''}
+    <div class="sub">Exported: ${new Date().toLocaleString('en-GB')} &nbsp;|&nbsp; Total: ${consumables.length} &nbsp;|&nbsp; PhilaBox: ${consGroups().phila.length} &nbsp;|&nbsp; Box Station: ${consGroups().box.length} &nbsp;|&nbsp; Problems: ${consGroups().bad.length}</div>
+    <table>
+      <thead><tr><th>#</th><th>Type</th><th>Barcode(s)</th><th>Status</th><th>Problem</th><th>Logged at</th></tr></thead>
+      <tbody>${rowsHtml}</tbody>
+    </table>
+  </body></html>`;
+
+  const blob = new Blob(['\ufeff', html], { type:'application/msword' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'Consumables_Inventory_' + new Date().toISOString().slice(0,10) + '.doc';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url), 2000);
+  toast('Consumables Word report ✓');
+}
+
+function exportConsExcel(){
+  if(consumables.length===0){ toast('No consumables to export'); return; }
+  if(typeof XLSX === 'undefined'){ toast('Excel library not loaded'); return; }
+  const rows = consumables.map((c,i)=>({
+    '#': i+1,
+    'Type': c.type,
+    'Barcode 1': c.codes[0]||'',
+    'Barcode 2': c.codes[1]||'',
+    'Status': c.status==='bad' ? 'Problem' : 'OK',
+    'Problem': c.status==='bad' ? c.reason : '',
+    'Logged at': c.time
+  }));
+  const ws = XLSX.utils.json_to_sheet(rows, { origin:'A3' });
+  XLSX.utils.sheet_add_aoa(ws, [
+    ['Consumables Inventory' + (getProject()?' - '+getProject():'')],
+    [(getTech()?'Prepared by: '+getTech()+'   ':'') + 'Exported: ' + new Date().toLocaleString('en-GB')]
+  ], { origin:'A1' });
+  ws['!cols'] = [{wch:4},{wch:14},{wch:22},{wch:22},{wch:10},{wch:50},{wch:22}];
+  ws['!freeze'] = { xSplit:0, ySplit:3 };
+  const lastCol = XLSX.utils.encode_col(Object.keys(rows[0]).length - 1);
+  ws['!autofilter'] = { ref:'A3:'+lastCol+(rows.length+3) };
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Consumables');
+  XLSX.writeFile(wb, 'Consumables_Inventory_' + new Date().toISOString().slice(0,10) + '.xlsx');
+  toast('Consumables Excel report ✓');
+}
+
 
 restoreEntries();
 renderHistory();
