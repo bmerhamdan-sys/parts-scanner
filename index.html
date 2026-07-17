@@ -177,6 +177,9 @@
   .cons-alert.show{ display:block; }
   .cons-alert.red{ background:rgba(224,52,36,0.1); border:1.5px solid var(--laser); color:var(--laser); }
   .cons-alert.green{ background:rgba(26,122,74,0.1); border:1.5px solid var(--green); color:var(--green); }
+  .cons-nextwrap{ display:none; margin-top:12px; }
+  .cons-nextwrap.show{ display:block; }
+  .cons-next-msg{ font-size:13px; font-weight:700; color:var(--green); margin-bottom:8px; text-align:center; }
   .cons-tabs{ display:flex; gap:8px; margin-bottom:12px; }
   .cons-tab{
     flex:1; padding:9px; border-radius:9px; border:1px solid var(--border);
@@ -658,6 +661,10 @@
         <button class="btn" id="consManualAdd">Enter</button>
       </div>
       <div class="cons-progress" id="consProgress"></div>
+      <div class="cons-nextwrap" id="consNextWrap">
+        <div class="cons-next-msg" id="consNextMsg">Barcode 1 captured ✓</div>
+        <button class="btn btn-primary btn-wide" id="consNextBtn">📷 Scan barcode 2 (turn the box to the other sticker)</button>
+      </div>
       <div class="cons-alert" id="consAlert"></div>
     </div>
 
@@ -903,7 +910,7 @@
 <script>
 const el = id => document.getElementById(id);
 
-const APP_VERSION = 'v8.3';
+const APP_VERSION = 'v8.4';
 document.getElementById('appVersion').textContent = APP_VERSION;
 
 /* ---------- slide-in menu ---------- */
@@ -3061,6 +3068,25 @@ function exportWord(){
 
 
 /* ================= CONSUMABLES INVENTORY ================= */
+// short confirmation beep on a successful scan (Web Audio — no asset needed)
+let _consAudioCtx = null;
+function consBeep(){
+  try{
+    _consAudioCtx = _consAudioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    const ctx = _consAudioCtx;
+    if(ctx.state === 'suspended') ctx.resume();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(880, ctx.currentTime);         // clear "ping"
+    gain.gain.setValueAtTime(0.001, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.35, ctx.currentTime + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.18);
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.start(); osc.stop(ctx.currentTime + 0.2);
+    if(navigator.vibrate) navigator.vibrate(60);
+  }catch(e){}
+}
 const CONS_KEY = 'partsScanner.consumables.v1';
 let consumables = [];          // {id, type, codes:[], status:'ok'|'bad', reason, time}
 let consType = null;           // 'PhilaBox' | 'BoxStation'
@@ -3123,6 +3149,7 @@ function resetConsFlow(){
   el('consTypeBox').classList.remove('selected');
   el('consScanCard').style.display = 'none';
   el('consProgress').innerHTML = '';
+  el('consNextWrap').classList.remove('show');
   hideConsAlert();
   el('consManual').value = '';
 }
@@ -3130,6 +3157,7 @@ function resetConsFlow(){
 function startConsType(type){
   consType = type; consScanTarget = 0; consCodesBuf = []; consRepairId = null;
   consLastRead = { code:null, t:0 };
+  el('consNextWrap').classList.remove('show');
   el('consTypePhila').classList.toggle('selected', type === 'PhilaBox');
   el('consTypeBox').classList.toggle('selected', type === 'BoxStation');
   el('consScanCard').style.display = 'block';
@@ -3174,19 +3202,24 @@ function consCapture(code){
   consLastRead = { code, t: now };
 
   consCodesBuf[consScanTarget] = code;
+  consBeep();                                    // audible confirmation
   toast('Barcode ' + (consScanTarget+1) + ': ' + code);
 
   const need = neededCodes();
   if(consScanTarget < need - 1){
+    // PAUSE the camera and wait for a tap, so the same sticker can't be read twice
+    if(consCamRunning) stopConsCam();
     consScanTarget++;
     updateConsProgress();
-    toast('Now scan barcode ' + (consScanTarget+1));
-    return;   // keep scanning the next one
+    el('consNextMsg').textContent = 'Barcode 1 captured ✓  (' + code + ')';
+    el('consNextWrap').classList.add('show');
+    return;
   }
 
   // all codes for this unit collected → validate
   updateConsProgress();
   if(consCamRunning) stopConsCam();
+  el('consNextWrap').classList.remove('show');
   validateAndSaveCons();
 }
 
@@ -3368,6 +3401,11 @@ el('consTypePhila').addEventListener('click', ()=> startConsType('PhilaBox'));
 el('consTypeBox').addEventListener('click', ()=> startConsType('BoxStation'));
 el('consStartCam').addEventListener('click', startConsCam);
 el('consStopCam').addEventListener('click', stopConsCam);
+el('consNextBtn').addEventListener('click', ()=>{
+  el('consNextWrap').classList.remove('show');
+  consLastRead = { code:null, t:0 };            // allow a different (or same) code now
+  startConsCam();
+});
 el('consManualAdd').addEventListener('click', ()=>{
   const v = el('consManual').value.trim();
   if(!v){ toast('Type a barcode'); return; }
