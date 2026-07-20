@@ -1326,7 +1326,7 @@ function scanBeep(){
   }catch(e){}
 }
 
-const APP_VERSION = 'v12.5';
+const APP_VERSION = 'v12.6';
 document.getElementById('appVersion').textContent = APP_VERSION;
 
 /* ---------- slide-in menu ---------- */
@@ -1381,9 +1381,22 @@ const STORE_KEY = 'partsScanner.entries.v1';
 function persist(){
   try{
     localStorage.setItem(STORE_KEY, JSON.stringify(entries));
+    return true;
   }catch(err){
     console.error('persist failed:', err);
-    toast('⚠ Auto-save failed — device storage is full');
+    // A toast here would get silently overwritten by whatever success toast
+    // the calling code shows right after (e.g. "Imported ✓", "Saved ✓") —
+    // that is exactly how data loss like this goes unnoticed. alert() is
+    // blocking, so it always shows BEFORE any later toast can hide it.
+    alert('⚠ Could not save — device storage is full.\n\n' +
+      'What you see on screen right now has NOT been saved. If you refresh or ' +
+      'close this page, this change will be lost.\n\n' +
+      'This usually happens once the inventory (especially part photos) grows ' +
+      'past what the browser allows for this site.\n\n' +
+      'To fix it now: export a JSON backup immediately (☰ menu → Backup ' +
+      'inventory) so nothing is lost, then free up space — for example by ' +
+      'removing photos from a few older parts — before adding more.');
+    return false;
   }
 }
 function restoreEntries(){
@@ -3095,8 +3108,8 @@ el('fileImport').addEventListener('change', e=>{
       if(typeof renderWdList === 'function') renderWdList();
     }
     renderHistory();
-    persist();
-    toast(choice === 'merge' ? 'Merged ✓' : 'Imported ✓');
+    const saved = persist();
+    if(saved) toast(choice === 'merge' ? 'Merged ✓' : 'Imported ✓');
   };
   reader.onerror = ()=> alert('Could not read the file.');
   reader.readAsText(file);
@@ -3760,7 +3773,14 @@ let consRepairId = null;       // id of the box being repaired, or null
 let consTab = 'ok';
 
 function consPersist(){
-  try{ localStorage.setItem(CONS_KEY, JSON.stringify(consumables)); }catch(e){}
+  try{ localStorage.setItem(CONS_KEY, JSON.stringify(consumables)); return true; }
+  catch(e){
+    console.error('consPersist failed:', e);
+    alert('⚠ Could not save Box Inventory — device storage is full.\n\n' +
+      'This change has NOT been saved. Export a JSON backup now (☰ menu → ' +
+      'Backup inventory) before refreshing or closing the page.');
+    return false;
+  }
 }
 function consRestore(){
   try{
@@ -4604,7 +4624,16 @@ let wdDevices = [];
 let wdSubs = [];
 let wdLastRead = { code:null, t:0 };
 
-function wdPersist(){ try{ localStorage.setItem(WD_KEY, JSON.stringify(withdrawals)); }catch(e){} }
+function wdPersist(){
+  try{ localStorage.setItem(WD_KEY, JSON.stringify(withdrawals)); return true; }
+  catch(e){
+    console.error('wdPersist failed:', e);
+    alert('⚠ Could not save the withdrawal log — device storage is full.\n\n' +
+      'This change has NOT been saved. Export a JSON backup now (☰ menu → ' +
+      'Backup inventory) before refreshing or closing the page.');
+    return false;
+  }
+}
 function wdRestore(){
   try{
     const raw = localStorage.getItem(WD_KEY);
