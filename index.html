@@ -123,7 +123,13 @@
     gap:6px; padding:12px 4px 14px;
   }
   .brand-row{ display:flex; align-items:center; justify-content:space-between; gap:10px; }
-  .brand-logo{ height:62px; width:auto; flex-shrink:0; display:block; }
+  .brand-row3{
+    position:relative; display:flex; align-items:center; justify-content:center;
+    min-height:40px;
+  }
+  .brand-row3 .nav-back{ position:absolute; left:0; top:50%; transform:translateY(-50%); }
+  .brand-row3 .nav-menu{ position:absolute; right:0; top:50%; transform:translateY(-50%); }
+  .brand-logo{ height:62px; width:auto; flex-shrink:0; display:block; cursor:pointer; }
   .brand-line2{
     display:flex; align-items:center; justify-content:space-between; gap:10px;
   }
@@ -199,6 +205,64 @@
     overflow-y:auto; padding:0 16px 40px;
   }
   .cons-view.open{ display:block; }
+  .site-card{
+    background:var(--surface); border:1px solid var(--border); border-radius:14px;
+    padding:14px 16px; margin-bottom:12px; box-shadow:var(--shadow-card);
+  }
+  .site-label{ font-size:10px; letter-spacing:.8px; text-transform:uppercase; color:var(--text-faint); font-family:var(--font-mono); }
+  .site-name{ font-size:19px; font-weight:700; margin-top:3px; }
+  .tile-row{ display:flex; gap:12px; margin-bottom:12px; }
+  .tile{
+    flex:1; background:var(--surface); border:1px solid var(--border); border-radius:14px;
+    padding:14px 16px; box-shadow:var(--shadow-card); min-width:0;
+  }
+  .tile-label{ font-size:10px; letter-spacing:.8px; text-transform:uppercase; color:var(--text-faint); font-family:var(--font-mono); }
+  .tile-num{ font-size:30px; font-weight:800; font-family:var(--font-mono); line-height:1.15; margin-top:2px; }
+  .tile.parts .tile-num{ color:var(--brand-ink); }
+  .tile.items .tile-num{ color:var(--teal-ink); }
+  .tile-sub{ font-size:10.5px; color:var(--text-faint); margin-top:2px; }
+  .tile.minstock{ margin-bottom:16px; }
+  .tile.minstock .tile-num{ color:var(--text); }
+  .tile.minstock .tile-num.alert{ color:var(--laser); }
+  .soon-badge{
+    display:inline-block; margin-top:6px; padding:4px 10px; border-radius:999px;
+    background:var(--surface-3); color:var(--text-dim);
+    font-size:11px; font-weight:700; font-family:var(--font-mono); letter-spacing:.5px;
+  }
+  .home-go{ margin-bottom:10px; }
+  .box-chip-wrap{ display:flex; flex-wrap:wrap; gap:7px; }
+  .box-chip{
+    background:var(--surface-2); border:1px solid var(--border); border-radius:9px;
+    padding:6px 10px; font-family:var(--font-mono); font-size:11.5px; color:var(--text-dim);
+    display:flex; align-items:center; gap:6px;
+  }
+  .box-chip b{ font-size:12.5px; color:var(--text); }
+  .box-chip.org{ background:var(--teal-tint); border-color:var(--teal); color:var(--teal-ink); }
+  .box-chip.org b{ color:var(--teal-ink); }
+  .box-chip-empty{ font-size:11.5px; color:var(--text-faint); }
+  .box-chip.cons{ background:var(--amber-glow); border-color:var(--amber); color:var(--amber); }
+  .box-chip.cons b{ color:var(--amber); }
+  .box-chip.cons.bad{ background:var(--laser-glow); border-color:var(--laser); color:var(--laser); }
+  .box-chip.cons.bad b{ color:var(--laser); }
+  .org-inline{ margin-top:12px; border-top:1px dashed var(--border); padding-top:10px; }
+  .org-hint{ font-size:10.5px; color:var(--text-faint); margin-bottom:8px; }
+  .org-btns{ display:flex; gap:8px; }
+  .org-toggle{
+    flex:1; padding:9px 6px; border-radius:10px; cursor:pointer;
+    background:var(--surface-2); border:1.5px solid var(--border); color:var(--text-dim);
+    font-size:12px; font-weight:600; font-family:inherit;
+  }
+  .org-toggle.on{ background:var(--teal-tint); border-color:var(--teal); color:var(--teal-ink); }
+  .org-qty{ display:flex; align-items:center; gap:8px; margin-top:9px; font-size:12px; color:var(--text-dim); }
+  .org-qty span{ flex:1; }
+  .org-qty input{
+    width:58px; text-align:center; padding:7px 4px; border-radius:8px;
+    background:var(--teal-tint); border:1.5px solid var(--teal); color:var(--teal-ink);
+    font-family:var(--font-mono); font-weight:700; font-size:15px;
+  }
+  .qty-btn.sm, .qty-btn.sm2{ width:36px; height:36px; padding:0; font-size:17px; }
+  .report-row{ display:flex; gap:10px; }
+  .report-row .export-btn{ flex:1; }
   .cons-top{
     position:sticky; top:0; z-index:5; background:var(--bg);
     padding-top:14px; padding-bottom:12px; margin:0 -16px 4px; padding-left:16px; padding-right:16px;
@@ -624,9 +688,10 @@
 <div class="wrap">
 
   <header class="top brand-head">
-    <div class="brand-row">
+    <div class="brand-row3">
+      <button class="theme-btn nav-back" id="entryBack" title="Back" aria-label="Back">←</button>
       <img class="brand-logo" id="brandLogo" alt="Swisslog Healthcare">
-      <button class="theme-btn" id="btnMenu" title="Menu" aria-label="Menu">☰</button>
+      <button class="theme-btn nav-menu" id="btnMenu" title="Menu" aria-label="Menu">☰</button>
     </div>
     <div class="brand-line2">
       <div class="brand-sub">Spare Parts Scanner · <span id="appVersion"></span></div>
@@ -659,6 +724,7 @@
 
     <div class="menu-section">
       <div class="menu-label">Data</div>
+      <button class="menu-item" id="btnOpenReports">📑 Reports</button>
       <button class="menu-item" id="btnExportData">⬇ Backup inventory (JSON)</button>
       <button class="menu-item" id="btnImportData">⬆ Import / merge backup</button>
       <button class="menu-item danger" id="btnClear">🗑 Clear all logged parts</button>
@@ -666,7 +732,12 @@
 
     <div class="menu-section">
       <div class="menu-label">Modules</div>
-      <button class="menu-item" id="btnOpenConsumables">📦 Consumables Inventory</button>
+      <button class="menu-item" id="btnHome">🏠 Home</button>
+      <button class="menu-item" id="btnAddParts">➕ Add</button>
+      <button class="menu-item" id="btnOpenWithdraw">🔧 Parts Withdrawal</button>
+      <button class="menu-item" id="btnOpenUpdate">🔍 Search and update part</button>
+      <button class="menu-item" id="btnOpenOrganizer">🧰 Parts Organizer stock-take</button>
+      <button class="menu-item" id="btnOpenConsumables">📦 Box Inventory</button>
     </div>
 
     <div class="menu-section">
@@ -678,16 +749,71 @@
   </aside>
 
   <!-- ================= CONSUMABLES INVENTORY VIEW ================= -->
-  <div class="cons-view" id="consView">
+  <!-- ================= HOME / DASHBOARD ================= -->
+  <div class="cons-view open" id="homeView">
     <header class="top cons-top brand-head">
-      <div class="brand-row">
-        <div style="display:flex; align-items:center; gap:10px; min-width:0;">
-          <button class="theme-btn" id="consBack" title="Back to spare parts">←</button>
-          <img class="brand-logo" id="brandLogoCons" alt="Swisslog Healthcare">
-        </div>
+      <div class="brand-row3">
+        <button class="theme-btn nav-back" id="homeBack" title="Back" aria-label="Back">←</button>
+        <img class="brand-logo" id="brandLogoHome" alt="Swisslog Healthcare">
+        <button class="theme-btn nav-menu" id="homeMenu" title="Menu" aria-label="Menu">☰</button>
       </div>
       <div class="brand-line2">
-        <div class="brand-sub">Consumables Inventory · PhilaBox / Box Station</div>
+        <div class="brand-sub">Inventory Management · <span id="homeVersion"></span></div>
+      </div>
+    </header>
+
+    <div class="site-card">
+      <div class="site-label">Site</div>
+      <div class="site-name" id="homeSite">—</div>
+    </div>
+
+    <div class="tile-row">
+      <div class="tile parts">
+        <div class="tile-label">Parts</div>
+        <div class="tile-num" id="homeParts">0</div>
+        <div class="tile-sub">total quantity</div>
+      </div>
+      <div class="tile items">
+        <div class="tile-label">Items</div>
+        <div class="tile-num" id="homeItems">0</div>
+        <div class="tile-sub">distinct part numbers</div>
+      </div>
+    </div>
+
+    <div class="tile minstock">
+      <div class="tile-label">Minimum stock</div>
+      <div class="tile-num" id="homeBelowMin">0</div>
+      <div class="tile-sub">items below their minimum</div>
+    </div>
+
+    <div class="card" id="consBoxCard">
+      <div class="hist-head"><div class="t">Box Inventory</div></div>
+      <div class="box-chip-wrap" id="consBoxChips"></div>
+    </div>
+
+    <div class="card" id="boxesCard">
+      <div class="hist-head"><div class="t">Storage Boxes</div></div>
+      <div class="box-chip-wrap" id="storageBoxChips"></div>
+      <div class="hist-head" style="margin-top:14px;"><div class="t">Parts Organizers</div></div>
+      <div class="box-chip-wrap" id="orgBoxChips"></div>
+    </div>
+
+    <button class="btn btn-primary btn-wide home-go" id="goEntry">➕ Add / scan parts</button>
+    <button class="btn btn-wide home-go" id="goWithdraw">🔧 Parts Withdrawal</button>
+    <button class="btn btn-wide home-go" id="goOrganizer">🧰 Parts Organizer</button>
+    <button class="btn btn-wide home-go" id="goConsumables">📦 Box Inventory</button>
+    <button class="btn btn-wide home-go" id="goReports">📑 Reports</button>
+  </div>
+
+  <div class="cons-view" id="consView">
+    <header class="top cons-top brand-head">
+      <div class="brand-row3">
+        <button class="theme-btn nav-back" id="consBack" title="Back" aria-label="Back">←</button>
+        <img class="brand-logo" id="brandLogoCons" alt="Swisslog Healthcare">
+        <button class="theme-btn nav-menu" id="consMenuBtn" title="Menu" aria-label="Menu">☰</button>
+      </div>
+      <div class="brand-line2">
+        <div class="brand-sub">Box Inventory · PhialBox / PillBox</div>
         <div class="counter-pill">Logged <b id="consCount">0</b></div>
       </div>
     </header>
@@ -695,8 +821,8 @@
     <div class="card">
       <div class="step-label"><div class="step-num">1</div><div class="step-title">What are you logging?</div></div>
       <div class="choice-grid">
-        <div class="choice-btn" id="consTypePhila" data-type="PhilaBox">PhilaBox<br><span style="font-size:11px;color:var(--text-faint)">1 barcode</span></div>
-        <div class="choice-btn" id="consTypeBox" data-type="BoxStation">Box Station<br><span style="font-size:11px;color:var(--text-faint)">1 barcode</span></div>
+        <div class="choice-btn" id="consTypePhila" data-type="PhilaBox">PhialBox<br><span style="font-size:11px;color:var(--text-faint)">1 barcode</span></div>
+        <div class="choice-btn" id="consTypeBox" data-type="BoxStation">PillBox<br><span style="font-size:11px;color:var(--text-faint)">1 barcode</span></div>
       </div>
     </div>
 
@@ -734,10 +860,6 @@
     <div class="card" id="consListCard">
       <div class="hist-head">
         <div class="t">Logged consumables</div>
-        <div style="display:flex; gap:6px;">
-          <button class="btn export-btn word" id="consWord" style="font-size:12px;">📄 Word</button>
-          <button class="btn export-btn" id="consExcel" style="font-size:12px; background:var(--green); border-color:var(--green);">📊 Excel</button>
-        </div>
       </div>
       <div class="cons-tabs">
         <button class="cons-tab active" id="consTabOk" data-tab="ok">✓ Healthy</button>
@@ -862,6 +984,16 @@
       <input type="number" id="qtyInput" min="1" value="1" inputmode="numeric">
       <button class="btn qty-btn" id="btnQtyPlus">+</button>
     </div>
+
+    <div class="org-inline">
+      <div class="org-hint">Minimum stock (re-order alert level)</div>
+      <div class="org-qty" style="margin-top:0;">
+        <span>Minimum:</span>
+        <button class="btn qty-btn sm2" id="btnMinMinus" tabindex="-1">−</button>
+        <input type="number" id="minStockInput" min="0" value="1" inputmode="numeric">
+        <button class="btn qty-btn sm2" id="btnMinPlus" tabindex="-1">+</button>
+      </div>
+    </div>
   </div>
 
   <!-- STEP: Storage box -->
@@ -874,6 +1006,26 @@
       <button class="btn qty-btn" id="btnBoxMinus">−</button>
       <input type="number" id="boxInput" min="1" value="1" inputmode="numeric">
       <button class="btn qty-btn" id="btnBoxPlus">+</button>
+    </div>
+
+    <div class="org-inline">
+      <div class="org-hint">Also kept in a Parts Organizer? (part of the quantity above)</div>
+      <div class="org-btns">
+        <button class="org-toggle" id="orgTog0" data-i="0">🧰 Organizer 1</button>
+        <button class="org-toggle" id="orgTog1" data-i="1">🧰 Organizer 2</button>
+      </div>
+      <div class="org-qty" id="orgQtyRow0" style="display:none;">
+        <span>In Organizer 1:</span>
+        <button class="btn qty-btn sm" data-org="0" data-d="-1">−</button>
+        <input type="number" id="orgIn0" min="0" value="1" inputmode="numeric">
+        <button class="btn qty-btn sm" data-org="0" data-d="1">+</button>
+      </div>
+      <div class="org-qty" id="orgQtyRow1" style="display:none;">
+        <span>In Organizer 2:</span>
+        <button class="btn qty-btn sm" data-org="1" data-d="-1">−</button>
+        <input type="number" id="orgIn1" min="0" value="1" inputmode="numeric">
+        <button class="btn qty-btn sm" data-org="1" data-d="1">+</button>
+      </div>
     </div>
   </div>
 
@@ -944,6 +1096,180 @@
   </div>
 
   <!-- History -->
+  <!-- ============ UPDATE PARTS ============ -->
+  <div class="cons-view" id="updateView">
+    <header class="top cons-top brand-head">
+      <div class="brand-row3">
+        <button class="theme-btn nav-back" id="updBack" title="Back" aria-label="Back">←</button>
+        <img class="brand-logo" id="brandLogoUpd" alt="Swisslog Healthcare">
+        <button class="theme-btn nav-menu" id="updMenuBtn" title="Menu" aria-label="Menu">☰</button>
+      </div>
+      <div class="brand-line2"><div class="brand-sub">Search and update part</div></div>
+    </header>
+
+    <div class="card" id="updScanCard">
+      <div class="step-label"><div class="step-num">1</div><div class="step-title">Scan or type the barcode</div></div>
+      <div class="scan-box idle" id="updScanBox" style="aspect-ratio:auto; height:300px;"><div id="updReader" style="width:100%; height:100%;"></div></div>
+      <button class="btn btn-primary btn-wide" id="updStartCam" style="margin-top:12px;">▶ Start camera</button>
+      <button class="btn btn-stop btn-wide" id="updStopCam" style="display:none; margin-top:12px;">⏹ Stop camera</button>
+      <div class="scan-row" style="margin-top:10px;">
+        <input type="text" id="updManual" placeholder="Or type the barcode">
+        <button class="btn" id="updManualAdd">Enter</button>
+      </div>
+      <div class="cons-alert" id="updAlert"></div>
+    </div>
+
+    <div class="card" id="updDetailsCard" style="display:none;">
+      <div class="hist-head"><div class="t">Part details</div></div>
+      <div id="updDetailsBody"></div>
+      <button class="btn btn-wide" id="updEditBtn" style="background:var(--blue); border-color:var(--blue); color:#fff; margin-top:14px;">✏️ Edit this part</button>
+      <button class="btn btn-wide" id="updScanAnother" style="background:var(--surface-2); color:var(--text); margin-top:8px;">🔍 Scan another part</button>
+    </div>
+  </div>
+
+  <!-- ============ REPORTS ============ -->
+  <div class="cons-view" id="reportsView">
+    <header class="top cons-top brand-head">
+      <div class="brand-row3">
+        <button class="theme-btn nav-back" id="reportsBack" title="Back" aria-label="Back">←</button>
+        <img class="brand-logo" id="brandLogoReports" alt="Swisslog Healthcare">
+        <button class="theme-btn nav-menu" id="reportsMenuBtn" title="Menu" aria-label="Menu">☰</button>
+      </div>
+      <div class="brand-line2"><div class="brand-sub">Reports</div></div>
+    </header>
+
+    <div class="card">
+      <div class="hist-head"><div class="t">Spare Parts Inventory</div></div>
+      <div class="report-row">
+        <button class="btn export-btn word" id="repPartsWord">📄 Word</button>
+        <button class="btn export-btn" id="repPartsExcel">📊 Excel</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="hist-head"><div class="t">Box Inventory</div></div>
+      <div class="report-row">
+        <button class="btn export-btn word" id="repBoxWord">📄 Word</button>
+        <button class="btn export-btn" id="repBoxExcel">📊 Excel</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="hist-head"><div class="t">Parts Withdrawal Log</div></div>
+      <div class="report-row">
+        <button class="btn export-btn word" id="repWdWord">📄 Word</button>
+        <button class="btn export-btn" id="repWdExcel">📊 Excel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ PARTS WITHDRAWAL ============ -->
+  <div class="cons-view" id="wdView">
+    <header class="top cons-top brand-head">
+      <div class="brand-row3">
+        <button class="theme-btn nav-back" id="wdBack" title="Back" aria-label="Back">←</button>
+        <img class="brand-logo" id="brandLogoWd" alt="Swisslog Healthcare">
+        <button class="theme-btn nav-menu" id="wdMenuBtn" title="Menu" aria-label="Menu">☰</button>
+      </div>
+      <div class="brand-line2">
+        <div class="brand-sub">Parts Withdrawal (for maintenance)</div>
+        <div class="counter-pill">Withdrawn <b id="wdCount">0</b></div>
+      </div>
+    </header>
+
+    <div class="card">
+      <div class="step-label"><div class="step-num">1</div><div class="step-title">Scan the part being withdrawn</div></div>
+      <div class="scan-box idle" id="wdScanBox" style="aspect-ratio:auto; height:300px;"><div id="wdReader" style="width:100%; height:100%;"></div></div>
+      <button class="btn btn-primary btn-wide" id="wdStartCam" style="margin-top:12px;">▶ Start camera</button>
+      <button class="btn btn-stop btn-wide" id="wdStopCam" style="display:none; margin-top:12px;">⏹ Stop camera</button>
+      <div class="scan-row" style="margin-top:10px;">
+        <input type="text" id="wdManual" placeholder="Or type the barcode">
+        <button class="btn" id="wdManualAdd">Enter</button>
+      </div>
+      <div class="cons-alert" id="wdAlert"></div>
+    </div>
+
+    <div class="card dim" id="wdForm" style="display:none;">
+      <div class="cons-next-msg" id="wdFound"></div>
+
+      <div class="step-label" style="margin-top:4px;"><div class="step-num">2</div><div class="step-title">Quantity to withdraw</div></div>
+      <div class="qty-row">
+        <button class="btn qty-btn" id="wdQtyMinus">−</button>
+        <input type="number" id="wdQtyInput" min="1" value="1" inputmode="numeric">
+        <button class="btn qty-btn" id="wdQtyPlus">+</button>
+      </div>
+
+      <div class="step-label" style="margin-top:14px;"><div class="step-num">3</div><div class="step-title">Used in (optional)</div></div>
+      <div class="choice-grid">
+        <div class="choice-btn" data-wd-device="BoxPicker"><span class="ic">📦</span><span class="lb">BoxPicker</span></div>
+        <div class="choice-btn device-pill" data-wd-device="PillPick"><span class="ic">💊</span><span class="lb">PillPick</span></div>
+      </div>
+      <div class="choice-grid sub" id="wdSubGrid" style="display:none; margin-top:8px;"></div>
+
+      <div class="step-label" style="margin-top:14px;"><div class="step-num">4</div><div class="step-title">Case number (optional)</div></div>
+      <input type="text" id="wdCaseInput" placeholder="e.g. CASE-1042" style="width:100%; padding:11px 12px; border-radius:10px; background:var(--surface-2); border:1.5px solid var(--border); color:var(--text); font-size:14px;">
+
+      <button class="btn btn-wide" id="wdConfirm" style="background:var(--laser); border-color:var(--laser); color:#fff; margin-top:16px;">🔧 Confirm withdrawal</button>
+      <button class="btn btn-wide" id="wdCancel" style="background:var(--surface-2); color:var(--text); margin-top:8px;">✕ Cancel</button>
+    </div>
+
+    <div class="card">
+      <div class="hist-head"><div class="t">Recent withdrawals</div></div>
+      <div id="wdList"></div>
+    </div>
+  </div>
+
+  <!-- ============ PARTS ORGANIZER STOCK-TAKE ============ -->
+  <div class="cons-view" id="orgView">
+    <header class="top cons-top brand-head">
+      <div class="brand-row3">
+        <button class="theme-btn nav-back" id="orgBack" title="Back" aria-label="Back">←</button>
+        <img class="brand-logo" id="brandLogoOrg" alt="Swisslog Healthcare">
+        <button class="theme-btn nav-menu" id="orgMenuBtn" title="Menu" aria-label="Menu">☰</button>
+      </div>
+      <div class="brand-line2">
+        <div class="brand-sub">Parts Organizer stock-take</div>
+        <div class="counter-pill">In organizer <b id="orgCount">0</b></div>
+      </div>
+    </header>
+
+    <div class="card">
+      <div class="step-label"><div class="step-num">1</div><div class="step-title">Which organizer?</div></div>
+      <div class="choice-grid">
+        <div class="choice-btn" id="orgPick1">Organizer 1</div>
+        <div class="choice-btn" id="orgPick2">Organizer 2</div>
+      </div>
+    </div>
+
+    <div class="card dim" id="orgScanCard" style="display:none;">
+      <div class="step-label"><div class="step-num">2</div><div class="step-title">Scan a part in the organizer</div></div>
+      <div class="scan-box idle" id="orgScanBox" style="aspect-ratio:auto; height:300px;"><div id="orgReader" style="width:100%; height:100%;"></div></div>
+      <button class="btn btn-primary btn-wide" id="orgStartCam" style="margin-top:12px;">▶ Start camera</button>
+      <button class="btn btn-stop btn-wide" id="orgStopCam" style="display:none; margin-top:12px;">⏹ Stop camera</button>
+      <div class="scan-row" style="margin-top:10px;">
+        <input type="text" id="orgManual" placeholder="Or type the barcode">
+        <button class="btn" id="orgManualAdd">Enter</button>
+      </div>
+      <div class="cons-alert" id="orgAlert"></div>
+
+      <div class="cons-nextwrap" id="orgQtyPanel">
+        <div class="cons-next-msg" id="orgFound"></div>
+        <div class="qty-row" style="margin-bottom:10px;">
+          <button class="btn qty-btn" id="orgMinus">−</button>
+          <input type="number" id="orgQtyInput" min="0" value="1" inputmode="numeric">
+          <button class="btn qty-btn" id="orgPlus">+</button>
+        </div>
+        <button class="btn btn-wide" id="orgSave" style="background:var(--green); border-color:var(--green); color:#fff; margin-bottom:8px;">✓ Save quantity in this organizer</button>
+        <button class="btn btn-wide" id="orgCancel" style="background:var(--surface-2); color:var(--text);">✕ Cancel</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="hist-head"><div class="t">Contents of <span id="orgTitle">Organizer 1</span></div></div>
+      <div id="orgList"></div>
+    </div>
+  </div>
+
   <div class="card" id="cardHist">
     <div class="hist-head">
       <div class="t">Logged parts</div>
@@ -966,8 +1292,6 @@
       <div class="stat parts"><span>Parts</span><b id="footCount">0</b></div>
       <div class="stat items"><span>Items</span><b id="footItems">0</b></div>
     </div>
-    <button class="export-btn word" id="btnExport" disabled>📄 Word</button>
-    <button class="export-btn" id="btnExportXlsx" disabled>📊 Excel</button>
   </div>
 </div>
 
@@ -1002,7 +1326,7 @@ function scanBeep(){
   }catch(e){}
 }
 
-const APP_VERSION = 'v10.0';
+const APP_VERSION = 'v12.5';
 document.getElementById('appVersion').textContent = APP_VERSION;
 
 /* ---------- slide-in menu ---------- */
@@ -1077,6 +1401,7 @@ function restoreEntries(){
   }catch(err){ console.error('restore failed:', err); }
 }
 let current = { barcode:null, devices:[], subs:[], conf:null, photo:null, desc:'', descOriginal:'', descLang:'', descPhoto:null };
+const ORG_COUNT = 2;                     // Parts Organizer boxes in the pharmacy
 let html5QrCode = null;
 let cameraRunning = false;
 let recognition = null;
@@ -1335,6 +1660,18 @@ let consScanMode = false;
 function onBarcode(code){
   if(!cameraRunning) return;
   scanBeep();   // scan sound for the whole app
+  if(typeof orgScanMode !== 'undefined' && orgScanMode){
+    orgCapture(code);
+    return;
+  }
+  if(typeof wdScanMode !== 'undefined' && wdScanMode){
+    wdCapture(code);
+    return;
+  }
+  if(typeof updScanMode !== 'undefined' && updScanMode){
+    updCapture(code);
+    return;
+  }
   if(consScanMode){
     consCapture(code);
     return;
@@ -2455,6 +2792,8 @@ el('qtyInput').addEventListener('change', ()=>{ el('qtyInput').value = getQty();
 
 /* ---------- storage box (sticky: keeps the last number the user set) ---------- */
 const BOX_KEY = 'partsScanner.lastBox';
+function orgInlineLoad(e){ orgInlineSet(e && e.orgQty ? e.orgQty : [0,0]); }
+
 function getBox(){
   const v = parseInt(el('boxInput').value, 10);
   return (isNaN(v) || v < 1) ? 1 : v;
@@ -2474,6 +2813,8 @@ let editingId = null;
 function cancelEdit(){
   if(editingId === null) return;
   editingId = null;
+  orgInlineReset();
+  el('minStockInput').value = 1;
   el('btnSave').textContent = '💾 Save part & continue to next';
 }
 
@@ -2484,6 +2825,8 @@ function startEdit(id){
   stopRecording();
 
   editingId = id;
+  orgInlineLoad(e);
+  el('minStockInput').value = (typeof e.minStock === 'number') ? e.minStock : 1;
   current = { barcode:e.barcode, devices:[...e.devices], subs:[...e.subs], conf:e.conf, photo:e.photo,
               desc:e.desc || '', descOriginal:e.descOriginal || '', descLang:e.descLang || '', descPhoto:e.descPhoto || null };
 
@@ -2547,6 +2890,15 @@ el('btnSave').addEventListener('click', ()=>{
       e.qty = qty;               // when editing, the field is the absolute quantity
       e.box = getBox();
       e.lastTime = nowStr;
+      { const v = parseInt(el('minStockInput').value,10); e.minStock = (isNaN(v)||v<0) ? 1 : v; }
+      e.orgQty = orgInlineRead();
+      // consumption lowers Qty → organizer stock must shrink with it
+      const beforeOrg = e.orgQty.reduce((a,b)=> a + (b||0), 0);
+      clampOrgQty(e);
+      const afterOrg = e.orgQty.reduce((a,b)=> a + (b||0), 0);
+      if(afterOrg < beforeOrg){
+        toast('Organizer stock trimmed to ' + afterOrg + ' (Qty is now ' + e.qty + ')');
+      }
     }
     cancelEdit();
     renderHistory();
@@ -2554,6 +2906,8 @@ el('btnSave').addEventListener('click', ()=>{
     toast('Updated ✓');
 
     current = { barcode:null, devices:[], subs:[], conf:null, photo:null, desc:'', descOriginal:'', descLang:'', descPhoto:null };
+    orgInlineReset();
+    el('minStockInput').value = 1;
     el('readout').style.display='none';
     resetDownstream();
     lockCard('cardDevice');
@@ -2585,6 +2939,11 @@ el('btnSave').addEventListener('click', ()=>{
       existing.descLang = current.descLang;
     }
     if(current.desc){ existing.desc = existing.desc ? existing.desc + ' | ' + current.desc : current.desc; }
+    const addOrg = orgInlineRead();
+    if(addOrg.some(n=> n > 0)){
+      existing.orgQty = existing.orgQty.map((n,i)=> (n||0) + addOrg[i]);
+      clampOrgQty(existing);
+    }
     renderHistory();
     persist();
     toast(`Added to box ${existing.box || 1} — quantity is now ${existing.qty}`);
@@ -2602,10 +2961,13 @@ el('btnSave').addEventListener('click', ()=>{
       descPhoto: current.descPhoto || null,
       qty: qty,
       box: getBox(),
+      minStock: (()=>{ const v = parseInt(el('minStockInput').value,10); return (isNaN(v)||v<0) ? 1 : v; })(),
+      orgQty: orgInlineRead(),
       time: nowStr,
       lastTime: nowStr,
       mismatch: false
     });
+    clampOrgQty(entries[entries.length-1]);
     renderHistory();
     persist();
     saveLastBox();
@@ -2629,7 +2991,8 @@ el('btnExportData').addEventListener('click', ()=>{
     exportedAt: new Date().toISOString(),
     count: entries.length,
     entries: entries,
-    consumables: consumables
+    consumables: consumables,
+    withdrawals: withdrawals
   };
   const blob = new Blob([JSON.stringify(payload)], { type:'application/json' });
   const url = URL.createObjectURL(blob);
@@ -2712,6 +3075,25 @@ el('fileImport').addEventListener('change', e=>{
       }
       consPersist();
     }
+    // also import withdrawal records if present in the backup
+    if(Array.isArray(data.withdrawals)){
+      const cleanWd = data.withdrawals.filter(w=> w && w.barcode != null && w.barcode !== '')
+        .map(w=> ({
+          id: w.id || (Date.now()+Math.floor(Math.random()*1e5)),
+          barcode: bcKey(w.barcode), desc: w.desc || '', qty: (typeof w.qty==='number' && w.qty>0) ? w.qty : 1,
+          devices: Array.isArray(w.devices) ? w.devices : [],
+          subs: Array.isArray(w.subs) ? w.subs : [],
+          caseNumber: w.caseNumber || '', time: w.time || ''
+        }));
+      if(choice === 'replace'){
+        withdrawals = cleanWd;
+      } else {
+        const seen = new Set(withdrawals.map(w=> w.id));
+        cleanWd.forEach(w=>{ if(!seen.has(w.id)) withdrawals.push(w); });
+      }
+      wdPersist();
+      if(typeof renderWdList === 'function') renderWdList();
+    }
     renderHistory();
     persist();
     toast(choice === 'merge' ? 'Merged ✓' : 'Imported ✓');
@@ -2721,8 +3103,19 @@ el('fileImport').addEventListener('change', e=>{
 });
 
 // fill in any fields an older backup might be missing
+// organizer stock is a subset of Qty — trim it if Qty was reduced by consumption
+function clampOrgQty(o){
+  let room = Math.max(0, o.qty || 0);
+  o.orgQty = o.orgQty.map(n=>{
+    const take = Math.min(n || 0, room);
+    room -= take;
+    return take;
+  });
+  return o;
+}
+
 function normalizeEntry(e){
-  return {
+  return clampOrgQty({
     id: e.id || (Date.now() + Math.floor(Math.random()*100000)),
     barcode: bcKey(e.barcode),
     devices: Array.isArray(e.devices) ? e.devices : [],
@@ -2735,10 +3128,17 @@ function normalizeEntry(e){
     descPhoto: e.descPhoto || null,
     qty: (typeof e.qty === 'number' && e.qty > 0) ? e.qty : 1,
     box: (typeof e.box === 'number' && e.box > 0) ? e.box : 1,
+    minStock: (typeof e.minStock === 'number' && e.minStock >= 0) ? Math.floor(e.minStock) : 1,
+    // quantity kept in each Parts Organizer (running stock in the pharmacy).
+    // The part still belongs to exactly ONE storage box — these are extra counts.
+    orgQty: Array.from({length:2}, (_,i)=>{
+      const v = Array.isArray(e.orgQty) ? e.orgQty[i] : 0;
+      return (typeof v === 'number' && v > 0) ? Math.floor(v) : 0;
+    }),
     time: e.time || new Date().toLocaleString('en-GB', { hour12:true }),
     lastTime: e.lastTime || e.time || new Date().toLocaleString('en-GB', { hour12:true }),
     mismatch: !!e.mismatch
-  };
+  });
 }
 
 function sameSet(a, b){
@@ -2770,14 +3170,13 @@ el('btnSearchCam').addEventListener('click', async ()=>{
 });
 
 function renderHistory(){
+  if(typeof refreshHome === 'function' && document.getElementById('homeParts')) refreshHome();
   const list = el('histList');
   const totalQty = entries.reduce((s,e)=> s + e.qty, 0);
   el('countBadge').textContent = totalQty;
   el('footCount').textContent = totalQty;
   el('countItems').textContent = entries.length;
   el('footItems').textContent = entries.length;
-  el('btnExport').disabled = entries.length === 0;
-  el('btnExportXlsx').disabled = entries.length === 0;
 
   if(entries.length === 0){
     list.innerHTML = '<div class="hist-empty">No parts logged yet — start by scanning a barcode</div>';
@@ -2846,8 +3245,8 @@ function escapeHtml(s){
 }
 
 /* ---------- Word export ---------- */
-el('btnExport').addEventListener('click', exportWord);
-el('btnExportXlsx').addEventListener('click', exportExcel);
+el('repPartsWord').addEventListener('click', ()=>{ closeMenu(); exportWord(); });
+el('repPartsExcel').addEventListener('click', ()=>{ closeMenu(); exportExcel(); });
 
 function exportExcel(){
   if(entries.length === 0) return;
@@ -2856,12 +3255,16 @@ function exportExcel(){
   const GROUP_NAMES = ['BoxPicker','PillPick','Shared'];
   const rows = sorted.map((e,i)=>({
     '#': i+1,
-    'Photo': (e.photo || e.descPhoto) ? '' : '—',   // image is anchored over this cell
+    'Photo': e.photo ? '' : '—',                       // image is anchored over this cell
     'Group': GROUP_NAMES[entryGroup(e)],
     'Part No. (Barcode)': e.barcode,
     'Description': e.desc || '',
     'Qty': e.qty,
     'Box': e.box || 1,
+    'Min. Stock': (typeof e.minStock === 'number') ? e.minStock : 1,
+    'Organizer 1': (e.orgQty && e.orgQty[0]) ? e.orgQty[0] : '',
+    'Organizer 2': (e.orgQty && e.orgQty[1]) ? e.orgQty[1] : '',
+    'On box': Math.max(0, (e.qty || 0) - ((e.orgQty || []).reduce((a,b)=> a + (b||0), 0))),
     'Machine / Component': entryDeviceLabel(e),
     'Confidence': e.conf,
     'Logged at': e.time,
@@ -2869,7 +3272,7 @@ function exportExcel(){
     'Classification mismatch': e.mismatch ? 'Yes' : '',
     'Original description': e.descOriginal || '',
     'Original language': e.descLang || '',
-    'Description photo': e.descPhoto ? 'Yes (see Word report)' : '',
+    'Description photo': e.descPhoto ? '' : '—',       // image is anchored over this cell
     // one flag column per classification → filter/sort with a single click in Excel
     'BoxPicker': e.devices.includes('BoxPicker') ? 'Yes' : '',
     'PillPick': e.devices.includes('PillPick') ? 'Yes' : '',
@@ -2882,27 +3285,31 @@ function exportExcel(){
     'Not sure': e.subs.includes('Not sure') ? 'Yes' : ''
   }));
   const stamp = new Date().toISOString().slice(0,10);
-  const widths = [4,10,10,24,45,6,6,32,11,22,22,20,45,14,20,11,10,9,10,11,9,11,10,9];
+  const widths = [4,10,10,24,45,6,6,9,11,11,8,32,11,22,22,20,45,14,20,11,10,9,10,11,9,11,10,9];
   const subtitle = (getTech() ? 'Prepared by: ' + getTech() + '   ' : '') +
                    'Exported: ' + new Date().toLocaleString('en-GB');
 
   if(typeof ExcelJS !== 'undefined'){
     (async ()=>{
-      // build small thumbnails for every part photo (keeps the file a sane size)
-      const withPhotos = sorted
-        .map((e,i)=> ({ index:i, src: e.photo || e.descPhoto }))   // Smart Shot saves descPhoto
-        .filter(p=> p.src);
-      const photos = [];
-      if(withPhotos.length){
-        toast('Preparing ' + withPhotos.length + ' photos…');
+      // build small thumbnails for part photos AND description photos separately
+      // (keeps the file a sane size; each part can have zero, one, or both)
+      const withPartPhotos = sorted.map((e,i)=> ({ index:i, src: e.photo })).filter(p=> p.src);
+      const withDescPhotos = sorted.map((e,i)=> ({ index:i, src: e.descPhoto })).filter(p=> p.src);
+      const total = withPartPhotos.length + withDescPhotos.length;
+      const partPhotos = [];
+      const descPhotos = [];
+      if(total){
+        toast('Preparing ' + total + ' photos…');
         let done = 0;
-        for(const p of withPhotos){
+        for(const p of withPartPhotos){
           const thumb = await thumbFromDataUrl(p.src, 110);
-          if(thumb) photos.push({ index:p.index, thumb });
-          if(++done % 25 === 0){
-            toast('Photos ' + done + '/' + withPhotos.length + '…');
-            await new Promise(r=> setTimeout(r, 0));   // let the UI breathe
-          }
+          if(thumb) partPhotos.push({ index:p.index, thumb });
+          if(++done % 25 === 0){ toast('Photos ' + done + '/' + total + '…'); await new Promise(r=> setTimeout(r, 0)); }
+        }
+        for(const p of withDescPhotos){
+          const thumb = await thumbFromDataUrl(p.src, 110);
+          if(thumb) descPhotos.push({ index:p.index, thumb });
+          if(++done % 25 === 0){ toast('Photos ' + done + '/' + total + '…'); await new Promise(r=> setTimeout(r, 0)); }
         }
       }
       await buildBrandedXlsx({
@@ -2910,9 +3317,12 @@ function exportExcel(){
         title:'Spare Parts Inventory' + (getProject() ? ' - ' + getProject() : ''),
         subtitle, rows, colWidths: widths,
         fileName:`Spare_Parts_Report_${stamp}.xlsx`,
-        photos, photoCol: 1                      // 0-based → column B ("Photo")
+        photoSets: [
+          { photos: partPhotos, col: 1 },    // column B — "Photo"
+          { photos: descPhotos, col: 18 }    // column S — "Description photo"
+        ]
       });
-      toast('Excel file generated ✓' + (photos.length ? ' (' + photos.length + ' photos)' : ''));
+      toast('Excel file generated ✓' + (total ? ' (' + total + ' photos)' : ''));
     })().catch(err=>{ console.error(err); toast('Excel export failed'); });
     return;
   }
@@ -2963,7 +3373,7 @@ function xlsxLogoBuffer(){
   return m ? m[1] : null;
 }
 
-async function buildBrandedXlsx({ sheetName, title, subtitle, rows, colWidths, fileName, photos, photoCol }){
+async function buildBrandedXlsx({ sheetName, title, subtitle, rows, colWidths, fileName, photos, photoCol, photoSets }){
   const wb = new ExcelJS.Workbook();
   wb.creator = 'Spare Parts Scanner';
   const ws = wb.addWorksheet(sheetName, { views:[{ state:'frozen', ySplit:6 }] });
@@ -3015,11 +3425,13 @@ async function buildBrandedXlsx({ sheetName, title, subtitle, rows, colWidths, f
     ws.getColumn(i+1).width = (colWidths && colWidths[i]) || 14;
   });
 
-  // ---- embed part photos, one per data row ----
-  if(photos && photos.length){
+  // ---- embed photos, one or more columns, one image per data row ----
+  const sets = photoSets && photoSets.length ? photoSets : (photos ? [{ photos, col: photoCol }] : []);
+  sets.forEach(set=>{
+    if(!set.photos || !set.photos.length) return;
     const CELL_PX = 58;                         // thumbnail box
     const rowPt   = Math.round(CELL_PX * 72/96) + 6;
-    photos.forEach(p=>{
+    set.photos.forEach(p=>{
       if(!p || !p.thumb) return;
       const excelRow = 7 + p.index;             // data starts on row 7
       try{
@@ -3029,13 +3441,14 @@ async function buildBrandedXlsx({ sheetName, title, subtitle, rows, colWidths, f
         const w = Math.max(1, Math.round(p.thumb.w*scale));
         const h = Math.max(1, Math.round(p.thumb.h*scale));
         ws.addImage(id, {
-          tl:{ col: photoCol + 0.12, row: (excelRow-1) + 0.12 },
+          tl:{ col: set.col + 0.12, row: (excelRow-1) + 0.12 },
           ext:{ width:w, height:h }
         });
-        ws.getRow(excelRow).height = rowPt;
+        const cur = ws.getRow(excelRow).height || 0;
+        ws.getRow(excelRow).height = Math.max(cur, rowPt);
       }catch(err){ console.warn('photo embed failed:', err); }
     });
-  }
+  });
   ws.autoFilter = {
     from:{ row:6, column:1 },
     to:{ row:6 + rows.length, column: headers.length }
@@ -3116,6 +3529,21 @@ function exportWord(){
     return `<th class="vt"><img src="${loc}" width="26" height="82" style="display:block;"></th>`;
   }).join('');
 
+  // Parts Organizer columns — vertical image headers, tinted so they read as a group
+  const orgHeaderCells = Array.from({length: ORG_COUNT}, (_, i)=>{
+    const png = makeVerticalHeaderPng('Organizer ' + (i+1), '#dbeff2');
+    const m = png.match(/^data:(image\/png);base64,(.+)$/i);
+    const loc = `file:///C:/parts/hdr_org${i}.png`;
+    images.push({ loc, type:m[1], b64:m[2] });
+    return `<th class="vt"><img src="${loc}" width="26" height="82" style="display:block;"></th>`;
+  }).join('');
+
+  const totalPng = makeVerticalHeaderPng('On box', '#e2e2e2');
+  const totalM = totalPng.match(/^data:(image\/png);base64,(.+)$/i);
+  const totalLoc = `file:///C:/parts/hdr_total.png`;
+  images.push({ loc: totalLoc, type:totalM[1], b64:totalM[2] });
+  const totalHeaderCell = `<th class="vt"><img src="${totalLoc}" width="26" height="82" style="display:block;"></th>`;
+
   // Confidence header as a vertical image with a light-grey fill
   const confPng = makeVerticalHeaderPng('Confidence', '#e2e2e2');
   const confM = confPng.match(/^data:(image\/png);base64,(.+)$/i);
@@ -3142,17 +3570,6 @@ function exportWord(){
       ? escapeHtml(e.descOriginal) + (e.descLang ? `<br><span style="color:#888; font-size:10px;">(${escapeHtml(e.descLang)})</span>` : '')
       : `<span style="color:#aaa;">—</span>`;
 
-    let descPhotoCell = `<span style="color:#aaa; font-size:11px;">—</span>`;
-    if(e.descPhoto){
-      const m2 = e.descPhoto.match(/^data:(image\/[a-z0-9.+-]+);base64,(.+)$/i);
-      if(m2){
-        const ext2 = m2[1].toLowerCase() === 'image/png' ? 'png' : 'jpg';
-        const loc2 = `file:///C:/parts/desc_photo_${images.length}.${ext2}`;
-        images.push({ loc: loc2, type:m2[1], b64:m2[2] });
-        descPhotoCell = `<img src="${loc2}" width="90" height="90" style="border:1px solid #ccc;">`;
-      }
-    }
-
     const zebra = (i % 2 === 1) ? ' style="background:#eef1f5;"' : '';
     return `
       <tr${zebra}>
@@ -3162,10 +3579,13 @@ function exportWord(){
         <td style="text-align:left; font-size:12px;">${descCell}</td>
         <td style="text-align:center; font-weight:bold;">${e.qty}</td>
         <td style="text-align:center; font-weight:bold;">${e.box || 1}</td>
+        <td style="text-align:center;">${(typeof e.minStock === 'number') ? e.minStock : 1}</td>
+        ${(e.orgQty||[0,0]).slice(0,ORG_COUNT).map(n=>
+            `<td style="text-align:center; font-weight:bold; background:#eef8fa;">${n > 0 ? n : ''}</td>`).join('')}
+        <td style="text-align:center; font-weight:bold; background:#f2f2f2;">${Math.max(0, (e.qty||0) - (e.orgQty||[]).reduce((a,b)=>a+(b||0),0))}</td>
         ${CLASS_COLS.map(col=> `<td class="tick">${col.in(e) ? '✓' : ''}</td>`).join('')}
         <td style="text-align:center; color:${e.conf==='High' ? '#1a7a4a' : '#a86a00'}; font-weight:bold;">${e.conf==='High' ? 'H' : 'L'}</td>
         <td style="text-align:left; font-size:10px;">${origCell}</td>
-        <td style="text-align:center;">${descPhotoCell}</td>
       </tr>`;
   }
 
@@ -3174,14 +3594,16 @@ function exportWord(){
         <tr style='mso-yfti-irow:-1;mso-yfti-firstrow:yes' class="rpt">
           <th style="width:26px;">#</th>
           <th style="width:44px;">Photo</th>
-          <th style="width:95px;">Part No.<br>(Barcode)</th>
-          <th style="width:210px;">Description (English)</th>
+          <th style="width:110px;">Part No.<br>(Barcode)</th>
+          <th style="width:195px;">Description (English)</th>
           <th style="width:30px;">Qty</th>
-          <th style="width:30px;">Box</th>
+          <th style="width:42px;">Box</th>
+          <th style="width:52px;">Min.<br>Stock</th>
+          ${orgHeaderCells}
+          ${totalHeaderCell}
           ${classHeaderCells}
           ${confHeaderCell}
-          <th style="width:80px;">Original<br>(Italian)</th>
-          <th style="width:70px;">Description<br>photo</th>
+          <th style="width:44px;">Original<br>(Italian)</th>
         </tr>
       </thead>`;
 
@@ -3238,7 +3660,7 @@ function exportWord(){
       h2{ font-size:14px; color:#1c2230; border-bottom:2px solid #1c2230; padding-bottom:4px; margin:22px 0 8px;}
       .sub{ color:#666; font-size:12px; margin-bottom:6px;}
       table{ border-collapse:collapse; width:100%; border:1.5px solid #333; table-layout:fixed; }
-      td, th{ overflow-wrap:break-word; word-break:normal; }
+      td, th{ overflow-wrap:break-word; word-break:normal; overflow:hidden; box-sizing:border-box; }
       th{ background:#1c2230; color:#fff; padding:6px 4px; font-size:10.5px; text-align:center; vertical-align:bottom; border:1px solid #555; }
       thead{ display:table-header-group; }        /* repeat header on every printed page */
       tr.rpt td, tr.rpt th{ mso-row-heading:yes; }
@@ -3246,11 +3668,11 @@ function exportWord(){
       /* zebra striping is applied inline per row for viewer compatibility */
 
       /* narrow classification columns with vertical image headers */
-      th.vt{ width:26px; padding:0; text-align:center; vertical-align:bottom; }
-      th.vt img{ margin:0 auto; }
+      th.vt{ width:28px; padding:0; text-align:center; vertical-align:bottom; overflow:hidden; }
+      th.vt img{ margin:0 auto; display:block; max-width:100%; }
       td.tick{
-        width:26px; text-align:center; border:1px solid #999;
-        padding:5px 3px; font-size:13px; font-weight:bold; color:#1a7a4a;
+        width:28px; text-align:center; border:1px solid #999;
+        padding:5px 2px; font-size:13px; font-weight:bold; color:#1a7a4a;
       }
       .legend{ margin-top:10px; font-size:11px; color:#555; line-height:1.8; }
       .legend b{ color:#111; }
@@ -3324,6 +3746,11 @@ function exportWord(){
 function consBeep(){ scanBeep(); }   // alias → global scanBeep
 const CONS_KEY = 'partsScanner.consumables.v1';
 let consumables = [];          // {id, type, codes:[], status:'ok'|'bad', reason, time}
+// Stored type keys stay 'PhilaBox' / 'BoxStation' forever so old backups keep working.
+// Only what the user SEES is renamed.
+const CONS_LABEL = { PhilaBox: 'PhialBox', BoxStation: 'PillBox' };
+const consLabel = t => CONS_LABEL[t] || t;
+
 let consType = null;           // 'PhilaBox' | 'BoxStation'
 let consScanTarget = 0;        // which barcode we're scanning (0 or 1)
 let consCodesBuf = [];         // codes collected in the current session
@@ -3575,7 +4002,7 @@ function renderConsList(){
       : escapeHtml(c.codes[0]||'');
     div.innerHTML = `
       <div class="ci-body">
-        <div class="ci-type">${escapeHtml(c.type)}</div>
+        <div class="ci-type">${escapeHtml(consLabel(c.type))}</div>
         <div class="ci-code">${codeText}</div>
         <div class="ci-meta">${c.status==='bad' ? '⚠ '+escapeHtml(c.reason) : c.time}</div>
       </div>
@@ -3607,8 +4034,8 @@ function startConsRepair(id){
 }
 
 /* ----- wiring ----- */
-el('btnOpenConsumables').addEventListener('click', openConsumables);
-el('consBack').addEventListener('click', closeConsumables);
+el('btnOpenConsumables').addEventListener('click', ()=> navTo('cons'));
+el('consBack').addEventListener('click', navBack);
 el('consTypePhila').addEventListener('click', ()=> startConsType('PhilaBox'));
 el('consTypeBox').addEventListener('click', ()=> startConsType('BoxStation'));
 el('consStartCam').addEventListener('click', startConsCam);
@@ -3636,8 +4063,8 @@ el('consManualAdd').addEventListener('click', ()=>{
 el('consManual').addEventListener('keydown', e=>{ if(e.key==='Enter') el('consManualAdd').click(); });
 el('consTabOk').addEventListener('click', ()=>{ consTab='ok'; syncConsTabs(); });
 el('consTabBad').addEventListener('click', ()=>{ consTab='bad'; syncConsTabs(); });
-el('consWord').addEventListener('click', exportConsWord);
-el('consExcel').addEventListener('click', exportConsExcel);
+el('repBoxWord').addEventListener('click', ()=>{ closeMenu(); exportConsWord(); });
+el('repBoxExcel').addEventListener('click', ()=>{ closeMenu(); exportConsExcel(); });
 
 consRestore();
 
@@ -3655,14 +4082,14 @@ function consGroups(){
 
 const CONS_LOGO_LOC = 'file:///C:/cons/swisslog.jpg';
 function exportConsWord(){
-  if(consumables.length===0){ toast('No consumables to export'); return; }
+  if(consumables.length===0){ toast('No boxes to export'); return; }
   const site = getProject(), tech = getTech();
   const g = consGroups();
   const sectionRows = (list, i0)=> list.map((c,i)=>{
     const bg = ((i0+i)%2===1) ? ' style="background:#eef1f5;"' : '';
     return `<tr${bg}>
       <td style="text-align:center;">${i0+i+1}</td>
-      <td>${escapeHtml(c.type)}</td>
+      <td>${escapeHtml(consLabel(c.type))}</td>
       <td style="font-family:'Courier New',monospace;">${escapeHtml(c.codes[0]||'')}</td>
       <td style="text-align:center; font-size:11px; color:#555;">${escapeHtml(c.time)}</td>
     </tr>`;
@@ -3675,7 +4102,7 @@ function exportConsWord(){
   if(g.wrongProblem.length){ rowsHtml += secTitle('⚠ Sticker in wrong position — needs new sticker', g.wrongProblem.length, '#d97f00') + sectionRows(g.wrongProblem, idx); idx += g.wrongProblem.length; }
 
   const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
-  <head><meta charset="utf-8"><title>Consumables Inventory</title>
+  <head><meta charset="utf-8"><title>Box Inventory</title>
   <style>
     @page { size:21cm 29.7cm; margin:1.4cm; }
     body{ font-family:'Segoe UI',Arial; }
@@ -3689,9 +4116,9 @@ function exportConsWord(){
   </style></head>
   <body>
     <div class="rpt-head"><img src="${CONS_LOGO_LOC}" width="150" height="51" alt="Swisslog Healthcare"></div>
-    <h1>Consumables Inventory${site?' - '+escapeHtml(site):''}</h1>
+    <h1>Box Inventory${site?' - '+escapeHtml(site):''}</h1>
     ${tech?`<div class="sub">Prepared by: ${escapeHtml(tech)}</div>`:''}
-    <div class="sub">Exported: ${new Date().toLocaleString('en-GB')} &nbsp;|&nbsp; Total: ${consumables.length} &nbsp;|&nbsp; PhilaBox: ${g.phila.length} &nbsp;|&nbsp; Box Station: ${g.box.length} &nbsp;|&nbsp; Duplicate: ${g.dupProblem.length} &nbsp;|&nbsp; Wrong-position: ${g.wrongProblem.length}</div>
+    <div class="sub">Exported: ${new Date().toLocaleString('en-GB')} &nbsp;|&nbsp; Total: ${consumables.length} &nbsp;|&nbsp; PhialBox: ${g.phila.length} &nbsp;|&nbsp; PillBox: ${g.box.length} &nbsp;|&nbsp; Duplicate: ${g.dupProblem.length} &nbsp;|&nbsp; Wrong-position: ${g.wrongProblem.length}</div>
     <table>
       <thead><tr><th>#</th><th>Type</th><th>Barcode</th><th>Logged at</th></tr></thead>
       <tbody>${rowsHtml}</tbody>
@@ -3726,20 +4153,20 @@ function exportConsWord(){
   const blob = new Blob([cmhtml], { type:'application/msword' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url; a.download = 'Consumables_Inventory_' + new Date().toISOString().slice(0,10) + '.doc';
+  a.href = url; a.download = 'Box_Inventory_' + new Date().toISOString().slice(0,10) + '.doc';
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   setTimeout(()=>URL.revokeObjectURL(url), 2000);
-  toast('Consumables Word report ✓');
+  toast('Box Inventory Word report ✓');
 }
 
 function exportConsExcel(){
-  if(consumables.length===0){ toast('No consumables to export'); return; }
+  if(consumables.length===0){ toast('No boxes to export'); return; }
   if(typeof ExcelJS === 'undefined' && typeof XLSX === 'undefined'){ toast('Excel library not loaded'); return; }
   const problemLabel = c=> c.problem==='duplicate' ? 'Duplicate sticker'
     : c.problem==='wrong-sticker' ? 'Wrong-position sticker' : '';
   const rows = consumables.map((c,i)=>({
     '#': i+1,
-    'Type': c.type,
+    'Type': consLabel(c.type),
     'Barcode': c.codes[0]||'',
     'Status': c.status==='bad' ? 'Problem' : 'OK',
     'Problem type': problemLabel(c),
@@ -3753,18 +4180,18 @@ function exportConsExcel(){
 
   if(typeof ExcelJS !== 'undefined'){
     buildBrandedXlsx({
-      sheetName:'Consumables',
-      title:'Consumables Inventory' + (getProject()?' - '+getProject():''),
+      sheetName:'Box Inventory',
+      title:'Box Inventory' + (getProject()?' - '+getProject():''),
       subtitle, rows, colWidths: widths,
-      fileName:'Consumables_Inventory_' + stamp + '.xlsx'
-    }).then(()=> toast('Consumables Excel report ✓'))
+      fileName:'Box_Inventory_' + stamp + '.xlsx'
+    }).then(()=> toast('Box Inventory Excel report ✓'))
       .catch(err=>{ console.error(err); toast('Excel export failed'); });
     return;
   }
 
   const ws = XLSX.utils.json_to_sheet(rows, { origin:'A3' });
   XLSX.utils.sheet_add_aoa(ws, [
-    ['Swisslog Healthcare  |  Consumables Inventory' + (getProject()?' - '+getProject():'')],
+    ['Swisslog Healthcare  |  Box Inventory' + (getProject()?' - '+getProject():'')],
     [subtitle]
   ], { origin:'A1' });
   ws['!cols'] = widths.map(w=>({wch:w}));
@@ -3773,13 +4200,886 @@ function exportConsExcel(){
   ws['!autofilter'] = { ref:'A3:'+lastCol+(rows.length+3) };
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Consumables');
-  XLSX.writeFile(wb, 'Consumables_Inventory_' + stamp + '.xlsx');
-  toast('Consumables Excel report ✓');
+  XLSX.writeFile(wb, 'Box_Inventory_' + stamp + '.xlsx');
+  toast('Box Inventory Excel report ✓');
 }
+
+
+
+/* ================= PARTS ORGANIZER STOCK-TAKE =================
+   A part always belongs to exactly ONE storage box. The organizers hold a
+   working quantity of the same part, recorded on the SAME entry (orgQty).   */
+let orgIndex = 0;            // 0 → Organizer 1, 1 → Organizer 2
+let orgScanMode = false;
+let orgCamRunning = false;
+let orgPending = null;       // the entry waiting for a quantity
+let orgLastRead = { code:null, t:0 };
+
+function openOrganizer(){
+  closeMenu();
+  el('orgView').classList.add('open');
+  orgPickOrganizer(0);
+  window.scrollTo(0,0);
+}
+function closeOrganizer(){
+  if(orgCamRunning) stopOrgCam();
+  const reader = el('reader'), mainBox = el('scanBox');
+  if(reader && mainBox && reader.parentElement !== mainBox){
+    mainBox.insertBefore(reader, mainBox.firstChild);
+  }
+  el('orgView').classList.remove('open');
+}
+
+function orgPickOrganizer(i){
+  orgIndex = i;
+  el('orgPick1').classList.toggle('selected', i === 0);
+  el('orgPick2').classList.toggle('selected', i === 1);
+  el('orgTitle').textContent = 'Organizer ' + (i+1);
+  el('orgScanCard').style.display = 'block';
+  el('orgScanCard').classList.remove('dim');
+  hideOrgAlert();
+  el('orgQtyPanel').classList.remove('show');
+  orgPending = null;
+  renderOrgList();
+}
+
+function showOrgAlert(html, kind){
+  const a = el('orgAlert');
+  a.className = 'cons-alert show ' + (kind || 'red');
+  a.innerHTML = html;
+}
+function hideOrgAlert(){ el('orgAlert').classList.remove('show'); el('orgAlert').innerHTML = ''; }
+
+// a barcode was captured while the organizer view is open
+function orgCapture(code){
+  code = bcKey(code);
+  if(!code) return;
+  const now = Date.now();
+  if(code === orgLastRead.code && now - orgLastRead.t < 1200) return;
+  orgLastRead = { code, t: now };
+
+  if(orgCamRunning) stopOrgCam();
+
+  const entry = entries.find(e=> bcKey(e.barcode) === code);
+  if(!entry){
+    // rule: a part must always have a storage box first
+    orgPending = null;
+    el('orgQtyPanel').classList.remove('show');
+    showOrgAlert('⚠ <b>Not registered yet.</b><br>Barcode <span class="code">' + escapeHtml(code) +
+      '</span> has no storage box.<br><br>Log it in a storage box first, then add it to the organizer.', 'red');
+    return;
+  }
+
+  orgPending = entry;
+  hideOrgAlert();
+  const already = entry.orgQty[orgIndex] || 0;
+  el('orgQtyInput').value = already > 0 ? already : 1;
+  el('orgFound').innerHTML =
+    '<span class="code">' + escapeHtml(entry.barcode) + '</span><br>' +
+    escapeHtml(entry.desc || 'no description') +
+    '<br><span style="color:var(--text-faint); font-weight:600;">Box ' + (entry.box || 1) +
+    ' · total ' + entry.qty +
+    ' · on shelf ' + Math.max(0, entry.qty - entry.orgQty.reduce((a,b)=>a+(b||0),0)) +
+    (already > 0 ? ' · ' + already + ' already here' : '') + '</span>';
+  el('orgQtyPanel').classList.add('show');
+}
+
+function orgSaveQty(){
+  if(!orgPending) return;
+  let v = parseInt(el('orgQtyInput').value, 10);
+  if(isNaN(v) || v < 0) v = 0;
+
+  // organizer stock is part of the total Qty, never on top of it
+  const otherOrgs = orgPending.orgQty.reduce((a,n,i)=> a + (i === orgIndex ? 0 : (n||0)), 0);
+  const room = Math.max(0, (orgPending.qty || 0) - otherOrgs);
+  if(v > room){
+    showOrgAlert('⚠ <b>More than the recorded stock.</b><br>Total for this part is <b>' + orgPending.qty +
+      '</b>' + (otherOrgs ? ' and ' + otherOrgs + ' already sits in the other organizer' : '') +
+      ', so at most <b>' + room + '</b> can be here.<br><br>' +
+      'If the hospital really holds more, raise <b>Qty</b> on the part first.', 'red');
+    el('orgQtyInput').value = room;
+    return;
+  }
+
+  orgPending.orgQty[orgIndex] = v;
+  orgPending.lastTime = new Date().toLocaleString('en-GB', { hour12:true });
+  persist();
+  renderHistory();
+  renderOrgList();
+  el('orgQtyPanel').classList.remove('show');
+  showOrgAlert(v > 0
+      ? '✓ <b>Saved.</b> ' + v + ' pcs in Organizer ' + (orgIndex+1) + '.'
+      : '✓ <b>Removed</b> from Organizer ' + (orgIndex+1) + '.', 'green');
+  orgPending = null;
+  orgLastRead = { code:null, t:0 };
+}
+
+function renderOrgList(){
+  const list = el('orgList');
+  const rows = entries.filter(e=> (e.orgQty && e.orgQty[orgIndex] > 0));
+  el('orgCount').textContent = rows.length;
+  if(rows.length === 0){
+    list.innerHTML = '<div class="hist-empty">Nothing recorded in this organizer yet</div>';
+    return;
+  }
+  list.innerHTML = '';
+  rows.forEach(e=>{
+    const div = document.createElement('div');
+    div.className = 'cons-item';
+    div.innerHTML = `
+      <div class="ci-body">
+        <div class="ci-code">${escapeHtml(e.barcode)}</div>
+        <div class="ci-meta">${escapeHtml(e.desc || '')}</div>
+        <div class="ci-meta">Box ${e.box || 1} · total ${e.qty} · on shelf ${Math.max(0, e.qty - e.orgQty.reduce((a,b)=>a+(b||0),0))}</div>
+      </div>
+      <div style="font-family:var(--font-mono); font-weight:700; font-size:16px; color:var(--teal-ink);">${e.orgQty[orgIndex]}</div>
+      <button class="ci-del" title="Remove from this organizer">✕</button>`;
+    div.querySelector('.ci-del').addEventListener('click', ()=>{
+      e.orgQty[orgIndex] = 0;
+      persist(); renderHistory(); renderOrgList();
+      toast('Removed from Organizer ' + (orgIndex+1));
+    });
+    list.appendChild(div);
+  });
+}
+
+/* camera: borrow the single main scanner (same proven pattern as consumables) */
+async function startOrgCam(){
+  if(orgCamRunning) return;
+  orgScanMode = true; orgCamRunning = true;
+  el('orgStartCam').style.display = 'none';
+  el('orgStopCam').style.display = 'block';
+  el('orgReader').appendChild(el('reader'));
+  el('orgScanBox').classList.remove('idle');
+  try{ await startCamera(); }
+  catch(err){ toast('Camera failed: ' + (err.message || err.name)); stopOrgCam(); }
+}
+function stopOrgCam(){
+  orgScanMode = false; orgCamRunning = false;
+  el('orgStartCam').style.display = 'block';
+  el('orgStopCam').style.display = 'none';
+  el('orgScanBox').classList.add('idle');
+  if(cameraRunning){ try{ stopCamera(); }catch(_){ } }
+  const reader = el('reader'), mainBox = el('scanBox');
+  if(reader && mainBox && reader.parentElement !== mainBox){
+    mainBox.insertBefore(reader, mainBox.firstChild);
+  }
+}
+
+el('btnOpenOrganizer').addEventListener('click', ()=> navTo('org'));
+el('orgBack').addEventListener('click', navBack);
+el('orgPick1').addEventListener('click', ()=> orgPickOrganizer(0));
+el('orgPick2').addEventListener('click', ()=> orgPickOrganizer(1));
+el('orgStartCam').addEventListener('click', startOrgCam);
+el('orgStopCam').addEventListener('click', stopOrgCam);
+el('orgManualAdd').addEventListener('click', ()=>{
+  const v = el('orgManual').value.trim();
+  if(!v){ toast('Type a barcode'); return; }
+  el('orgManual').value = '';
+  orgCapture(v);
+});
+el('orgManual').addEventListener('keydown', e=>{ if(e.key === 'Enter') el('orgManualAdd').click(); });
+el('orgMinus').setAttribute('tabindex','-1');
+el('orgPlus').setAttribute('tabindex','-1');
+el('orgMinus').addEventListener('pointerdown', e=> e.preventDefault());
+el('orgPlus').addEventListener('pointerdown', e=> e.preventDefault());
+el('orgMinus').addEventListener('click', ()=>{
+  const i = el('orgQtyInput'); i.value = Math.max(0, (parseInt(i.value,10)||0) - 1); i.blur();
+});
+el('orgPlus').addEventListener('click', ()=>{
+  const i = el('orgQtyInput'); i.value = (parseInt(i.value,10)||0) + 1; i.blur();
+});
+el('orgSave').addEventListener('click', orgSaveQty);
+el('orgCancel').addEventListener('click', ()=>{
+  orgPending = null;
+  el('orgQtyPanel').classList.remove('show');
+  orgLastRead = { code:null, t:0 };
+  hideOrgAlert();
+});
+
+
+/* ---------- inline Parts Organizer controls on the entry page ---------- */
+function orgInlineReset(){
+  [0,1].forEach(i=>{
+    el('orgTog'+i).classList.remove('on');
+    el('orgQtyRow'+i).style.display = 'none';
+    el('orgIn'+i).value = 1;
+  });
+}
+function orgInlineSet(arr){
+  [0,1].forEach(i=>{
+    const v = (arr && arr[i]) || 0;
+    el('orgTog'+i).classList.toggle('on', v > 0);
+    el('orgQtyRow'+i).style.display = v > 0 ? 'flex' : 'none';
+    el('orgIn'+i).value = v > 0 ? v : 1;
+  });
+}
+function orgInlineRead(){
+  return [0,1].map(i=>{
+    if(!el('orgTog'+i).classList.contains('on')) return 0;
+    const v = parseInt(el('orgIn'+i).value, 10);
+    return (isNaN(v) || v < 0) ? 0 : v;
+  });
+}
+[0,1].forEach(i=>{
+  el('orgTog'+i).addEventListener('click', ()=>{
+    const on = el('orgTog'+i).classList.toggle('on');
+    el('orgQtyRow'+i).style.display = on ? 'flex' : 'none';
+    // no .focus() here on purpose — the keyboard should only appear if the
+    // user taps the number itself, never just from switching the organizer on
+  });
+});
+document.querySelectorAll('.qty-btn.sm').forEach(b=>{
+  if(!b.dataset.org) return;                  // not an organizer stepper — skip
+  b.setAttribute('tabindex', '-1');           // never receives focus itself
+  b.addEventListener('pointerdown', e=> e.preventDefault());  // stops it stealing focus from elsewhere
+  b.addEventListener('click', ()=>{
+    const inp = el('orgIn' + b.dataset.org);
+    const d = parseInt(b.dataset.d, 10);
+    inp.value = Math.max(0, (parseInt(inp.value,10) || 0) + d);
+    inp.blur();                                // make sure no keyboard sneaks in
+  });
+});
+
+/* ================= HOME / DASHBOARD ================= */
+/* ---------- universal navigation: a real back-history stack ----------
+   navTo(id) remembers where you came FROM, so navBack() always returns you
+   to the exact page you were on — and simply stays on Home if there is
+   nowhere left to go back to.                                            */
+let navHistory = [];
+let navCurrent = 'home';
+
+function hideAllOverlays(){
+  if(orgCamRunning) stopOrgCam();
+  if(wdCamRunning) stopWdCam();
+  if(typeof updCamRunning !== 'undefined' && updCamRunning){ try{ stopUpdCam(); }catch(_){ } }
+  if(typeof consCamRunning !== 'undefined' && consCamRunning){ try{ stopConsCam(); }catch(_){ } }
+  el('homeView').classList.remove('open');
+  el('consView').classList.remove('open');
+  el('orgView').classList.remove('open');
+  el('wdView').classList.remove('open');
+  el('reportsView').classList.remove('open');
+  el('updateView').classList.remove('open');
+}
+
+const VIEW_OPENERS = {
+  home: openHome,
+  entry: ()=>{ closeMenu(); window.scrollTo(0,0); },   // just reveals the base page
+  cons: openConsumables,
+  org: openOrganizer,
+  wd: openWithdraw,
+  reports: openReports,
+  update: openUpdateParts
+};
+
+function navTo(id){
+  if(!VIEW_OPENERS[id]) return;
+  closeMenu();
+  if(id !== navCurrent) navHistory.push(navCurrent);
+  navCurrent = id;
+  hideAllOverlays();
+  VIEW_OPENERS[id]();
+}
+function navBack(){
+  closeMenu();
+  const prev = navHistory.length ? navHistory.pop() : 'home';
+  navCurrent = prev;
+  hideAllOverlays();
+  VIEW_OPENERS[prev]();
+}
+
+// kept for any older code path that still calls it directly
+function goHome(){ navTo('home'); }
+
+function openHome(){
+  el('consView').classList.remove('open');
+  el('orgView').classList.remove('open');
+  el('homeView').classList.add('open');
+  refreshHome();
+  window.scrollTo(0,0);
+}
+function closeHome(){ el('homeView').classList.remove('open'); window.scrollTo(0,0); }
+
+function refreshHome(){
+  const site = (typeof getProject === 'function' && getProject()) ? getProject() : '';
+  el('homeSite').textContent = site || 'Set the site name in the menu';
+  el('homeSite').style.color = site ? '' : 'var(--text-faint)';
+  const totalQty = entries.reduce((a,e)=> a + (e.qty || 0), 0);
+  el('homeParts').textContent = totalQty;
+  el('homeItems').textContent = entries.length;
+  el('homeVersion').textContent = APP_VERSION;
+
+  // Storage boxes actually in use, sorted, with item/qty counts
+  const byBox = {};
+  entries.forEach(e=>{
+    const b = e.box || 1;
+    if(!byBox[b]) byBox[b] = { items:0, qty:0 };
+    byBox[b].items++; byBox[b].qty += (e.qty || 0);
+  });
+  const boxNums = Object.keys(byBox).map(Number).sort((a,b)=> a-b);
+  const sbWrap = el('storageBoxChips');
+  sbWrap.innerHTML = boxNums.length
+    ? boxNums.map(n=> `<div class="box-chip">Box <b>${n}</b> · ${byBox[n].items} items</div>`).join('')
+    : '<div class="box-chip-empty">No parts logged yet</div>';
+
+  // Parts Organizers, with item/qty counts
+  const orgWrap = el('orgBoxChips');
+  const orgChips = Array.from({length: ORG_COUNT}, (_,i)=>{
+    const items = entries.filter(e=> e.orgQty && e.orgQty[i] > 0);
+    const qty = items.reduce((a,e)=> a + e.orgQty[i], 0);
+    return items.length
+      ? `<div class="box-chip org">Organizer <b>${i+1}</b> · ${items.length} items · ${qty} pcs</div>`
+      : `<div class="box-chip org">Organizer <b>${i+1}</b> · empty</div>`;
+  });
+  orgWrap.innerHTML = orgChips.join('');
+
+  const belowMin = entries.filter(e=> (e.qty||0) < (typeof e.minStock === 'number' ? e.minStock : 1)).length;
+  const bm = el('homeBelowMin');
+  bm.textContent = belowMin;
+  bm.classList.toggle('alert', belowMin > 0);
+
+  // Box Inventory (PhialBox / PillBox), healthy vs needs-fixing
+  const consWrap = el('consBoxChips');
+  if(typeof consumables !== 'undefined'){
+    const byType = { PhilaBox: { ok:0, bad:0 }, BoxStation: { ok:0, bad:0 } };
+    consumables.forEach(c=>{
+      if(!byType[c.type]) return;
+      byType[c.type][c.status === 'bad' ? 'bad' : 'ok']++;
+    });
+    const chips = [];
+    Object.keys(byType).forEach(t=>{
+      const n = byType[t];
+      const label = consLabel(t);
+      if(n.ok) chips.push(`<div class="box-chip cons">${label} <b>${n.ok}</b> healthy</div>`);
+      if(n.bad) chips.push(`<div class="box-chip cons bad">${label} <b>${n.bad}</b> needs fixing</div>`);
+    });
+    consWrap.innerHTML = chips.length ? chips.join('') : '<div class="box-chip-empty">No boxes logged yet</div>';
+  }
+}
+
+el('btnHome').addEventListener('click', ()=> navTo('home'));
+el('homeMenu').addEventListener('click', openMenu);
+el('btnAddParts').addEventListener('click', ()=> navTo('entry'));
+el('goEntry').addEventListener('click', ()=> navTo('entry'));
+el('goOrganizer').addEventListener('click', ()=> navTo('org'));
+el('goConsumables').addEventListener('click', ()=> navTo('cons'));
+el('goReports') && el('goReports').addEventListener('click', ()=> navTo('reports'));
+
+el('brandLogoHome').src = SWISSLOG_LOGO_HDR;
+['brandLogo','brandLogoHome','brandLogoCons','brandLogoUpd','brandLogoReports','brandLogoWd','brandLogoOrg']
+  .forEach(id=> el(id).addEventListener('click', ()=> navTo('home')));
+refreshHome();
+
+el('btnMinMinus').setAttribute('tabindex','-1');
+el('btnMinPlus').setAttribute('tabindex','-1');
+el('btnMinMinus').addEventListener('pointerdown', e=> e.preventDefault());
+el('btnMinPlus').addEventListener('pointerdown', e=> e.preventDefault());
+el('btnMinMinus').addEventListener('click', ()=>{
+  const i = el('minStockInput'); i.value = Math.max(0, (parseInt(i.value,10)||0) - 1); i.blur();
+});
+el('btnMinPlus').addEventListener('click', ()=>{
+  const i = el('minStockInput'); i.value = (parseInt(i.value,10)||0) + 1; i.blur();
+});
+
+// unified navigation: every header's Back button returns to the previous view
+el('entryBack').addEventListener('click', navBack);
+el('homeBack').addEventListener('click', navBack);
+el('consMenuBtn').addEventListener('click', openMenu);
+el('updMenuBtn').addEventListener('click', openMenu);
+el('reportsMenuBtn').addEventListener('click', openMenu);
+el('wdMenuBtn').addEventListener('click', openMenu);
+el('orgMenuBtn').addEventListener('click', openMenu);
+
+
+/* ================= PARTS WITHDRAWAL =================
+   Pulls a quantity out of an existing part's stock for maintenance use.
+   This LOWERS the part's total Qty (same rule as manual consumption), so any
+   Organizer stock is trimmed automatically if it no longer fits.            */
+const WD_KEY = 'partsScanner.withdrawals.v1';
+let withdrawals = [];   // {id, barcode, desc, qty, devices:[], subs:[], caseNumber, time}
+let wdScanMode = false;
+let wdCamRunning = false;
+let wdPending = null;          // the entry being withdrawn from
+let wdDevices = [];
+let wdSubs = [];
+let wdLastRead = { code:null, t:0 };
+
+function wdPersist(){ try{ localStorage.setItem(WD_KEY, JSON.stringify(withdrawals)); }catch(e){} }
+function wdRestore(){
+  try{
+    const raw = localStorage.getItem(WD_KEY);
+    if(raw) withdrawals = JSON.parse(raw).map(w=> ({
+      id: w.id || (Date.now()+Math.floor(Math.random()*1e5)),
+      barcode: bcKey(w.barcode), desc: w.desc || '', qty: w.qty || 1,
+      devices: Array.isArray(w.devices) ? w.devices : [],
+      subs: Array.isArray(w.subs) ? w.subs : [],
+      caseNumber: w.caseNumber || '', time: w.time || ''
+    }));
+  }catch(e){ withdrawals = []; }
+}
+
+function openWithdraw(){
+  closeMenu();
+  el('wdView').classList.add('open');
+  wdResetForm();
+  renderWdList();
+  window.scrollTo(0,0);
+}
+function closeWithdraw(){
+  if(wdCamRunning) stopWdCam();
+  el('wdView').classList.remove('open');
+}
+
+function wdBuildSubGrid(){
+  const g = el('wdSubGrid');
+  g.innerHTML = '';
+  SUB_COMPONENTS.forEach(name=>{
+    const d = document.createElement('div');
+    d.className = 'choice-btn sub-btn' + (name === 'Not sure' ? ' wide' : '');
+    d.dataset.wdSub = name;
+    d.innerHTML = `<span class="lb">${name}</span>`;
+    d.addEventListener('click', ()=>{
+      const on = d.classList.toggle('selected');
+      wdSubs = on ? [...wdSubs, name] : wdSubs.filter(x=> x !== name);
+    });
+    g.appendChild(d);
+  });
+}
+wdBuildSubGrid();
+
+document.querySelectorAll('[data-wd-device]').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    const dev = btn.dataset.wdDevice;
+    const on = btn.classList.toggle('selected');
+    wdDevices = on ? [...wdDevices, dev] : wdDevices.filter(x=> x !== dev);
+    const hasPill = wdDevices.includes('PillPick');
+    el('wdSubGrid').style.display = hasPill ? 'flex' : 'none';
+    if(!hasPill){ wdSubs = []; document.querySelectorAll('#wdSubGrid .choice-btn').forEach(b=> b.classList.remove('selected')); }
+  });
+});
+
+function showWdAlert(html, kind){
+  const a = el('wdAlert');
+  a.className = 'cons-alert show ' + (kind || 'red');
+  a.innerHTML = html;
+}
+function hideWdAlert(){ el('wdAlert').classList.remove('show'); el('wdAlert').innerHTML = ''; }
+
+function wdResetForm(){
+  wdPending = null; wdDevices = []; wdSubs = [];
+  el('wdForm').style.display = 'none';
+  el('wdQtyInput').value = 1;
+  el('wdCaseInput').value = '';
+  document.querySelectorAll('[data-wd-device].selected, #wdSubGrid .selected').forEach(b=> b.classList.remove('selected'));
+  el('wdSubGrid').style.display = 'none';
+  hideWdAlert();
+  wdLastRead = { code:null, t:0 };
+}
+
+function wdCapture(code){
+  code = bcKey(code);
+  if(!code) return;
+  const now = Date.now();
+  if(code === wdLastRead.code && now - wdLastRead.t < 1200) return;
+  wdLastRead = { code, t: now };
+  if(wdCamRunning) stopWdCam();
+
+  const entry = entries.find(e=> bcKey(e.barcode) === code);
+  if(!entry){
+    showWdAlert('⚠ <b>Not registered.</b><br>Barcode <span class="code">' + escapeHtml(code) +
+      '</span> has no stock on record — nothing to withdraw.', 'red');
+    return;
+  }
+  if((entry.qty || 0) <= 0){
+    showWdAlert('⚠ <b>Zero stock.</b> ' + escapeHtml(entry.barcode) + ' has no quantity left to withdraw.', 'red');
+    return;
+  }
+
+  wdPending = entry;
+  hideWdAlert();
+  el('wdQtyInput').max = entry.qty;
+  el('wdQtyInput').value = 1;
+  el('wdFound').innerHTML =
+    '<span class="code">' + escapeHtml(entry.barcode) + '</span><br>' +
+    escapeHtml(entry.desc || 'no description') +
+    '<br><span style="color:var(--text-faint); font-weight:600;">Box ' + (entry.box||1) +
+    ' · current qty ' + entry.qty + '</span>';
+  el('wdForm').style.display = 'block';
+}
+
+function wdConfirm(){
+  if(!wdPending) return;
+  let v = parseInt(el('wdQtyInput').value, 10);
+  if(isNaN(v) || v < 1) v = 1;
+  if(v > wdPending.qty) v = wdPending.qty;
+
+  const caseNumber = el('wdCaseInput').value.trim();
+  const nowStr = new Date().toLocaleString('en-GB', { hour12:true });
+
+  withdrawals.push({
+    id: Date.now()+Math.floor(Math.random()*1e5),
+    barcode: wdPending.barcode, desc: wdPending.desc || '', qty: v,
+    devices: [...wdDevices], subs: [...wdSubs], caseNumber, time: nowStr
+  });
+  wdPersist();
+
+  wdPending.qty = Math.max(0, (wdPending.qty || 0) - v);
+  wdPending.lastTime = nowStr;
+  clampOrgQty(wdPending);
+  persist();
+  renderHistory();
+
+  toast('Withdrew ' + v + ' × ' + wdPending.barcode + (caseNumber ? ' (' + caseNumber + ')' : ''));
+  wdResetForm();
+  renderWdList();
+}
+
+function wdUsedLabel(w){
+  const parts = [...(w.devices||[])];
+  if(w.subs && w.subs.length) parts.push(...w.subs);
+  return parts.length ? parts.join(', ') : '—';
+}
+
+function renderWdList(){
+  const list = el('wdList');
+  el('wdCount').textContent = withdrawals.length;
+  if(withdrawals.length === 0){
+    list.innerHTML = '<div class="hist-empty">No withdrawals logged yet</div>';
+    return;
+  }
+  list.innerHTML = '';
+  withdrawals.slice().reverse().forEach(w=>{
+    const div = document.createElement('div');
+    div.className = 'cons-item';
+    div.innerHTML = `
+      <div class="ci-body">
+        <div class="ci-code">${escapeHtml(w.barcode)} <span style="color:var(--text-faint); font-weight:500;">× ${w.qty}</span></div>
+        <div class="ci-meta">${escapeHtml(w.desc || '')}</div>
+        <div class="ci-meta">Used in: ${escapeHtml(wdUsedLabel(w))}${w.caseNumber ? ' · Case ' + escapeHtml(w.caseNumber) : ''}</div>
+        <div class="ci-meta">${escapeHtml(w.time)}</div>
+      </div>
+      <button class="ci-del" title="Delete this record">✕</button>`;
+    div.querySelector('.ci-del').addEventListener('click', ()=>{
+      withdrawals = withdrawals.filter(x=> x.id !== w.id);
+      wdPersist(); renderWdList();
+      toast('Withdrawal record removed');
+    });
+    list.appendChild(div);
+  });
+}
+
+async function startWdCam(){
+  if(wdCamRunning) return;
+  wdScanMode = true; wdCamRunning = true;
+  el('wdStartCam').style.display = 'none';
+  el('wdStopCam').style.display = 'block';
+  el('wdReader').appendChild(el('reader'));
+  el('wdScanBox').classList.remove('idle');
+  try{ await startCamera(); }
+  catch(err){ toast('Camera failed: ' + (err.message || err.name)); stopWdCam(); }
+}
+function stopWdCam(){
+  wdScanMode = false; wdCamRunning = false;
+  el('wdStartCam').style.display = 'block';
+  el('wdStopCam').style.display = 'none';
+  el('wdScanBox').classList.add('idle');
+  if(cameraRunning){ try{ stopCamera(); }catch(_){ } }
+  const reader = el('reader'), mainBox = el('scanBox');
+  if(reader && mainBox && reader.parentElement !== mainBox){
+    mainBox.insertBefore(reader, mainBox.firstChild);
+  }
+}
+
+el('btnOpenWithdraw').addEventListener('click', ()=> navTo('wd'));
+el('wdBack').addEventListener('click', navBack);
+el('wdStartCam').addEventListener('click', startWdCam);
+el('wdStopCam').addEventListener('click', stopWdCam);
+el('wdManualAdd').addEventListener('click', ()=>{
+  const v = el('wdManual').value.trim();
+  if(!v){ toast('Type a barcode'); return; }
+  el('wdManual').value = '';
+  wdCapture(v);
+});
+el('wdManual').addEventListener('keydown', e=>{ if(e.key === 'Enter') el('wdManualAdd').click(); });
+el('wdQtyMinus').addEventListener('click', ()=>{
+  const i = el('wdQtyInput'); i.value = Math.max(1, (parseInt(i.value,10)||1) - 1);
+});
+el('wdQtyPlus').addEventListener('click', ()=>{
+  const i = el('wdQtyInput'); const max = wdPending ? wdPending.qty : 999999;
+  i.value = Math.min(max, (parseInt(i.value,10)||1) + 1);
+});
+el('wdConfirm').addEventListener('click', wdConfirm);
+el('wdCancel').addEventListener('click', wdResetForm);
+
+el('goWithdraw') && el('goWithdraw').addEventListener('click', ()=> navTo('wd'));
+
+/* ---------- Parts Withdrawal report (Word + Excel) ---------- */
+const WD_LOGO_LOC = 'file:///C:/wd/swisslog.jpg';
+
+function exportWdWord(){
+  if(withdrawals.length === 0){ toast('No withdrawals to export'); return; }
+  const site = getProject();
+  const rows = withdrawals.slice().reverse().map((w,i)=> `
+      <tr${i%2===1 ? ' style="background:#eef1f5;"' : ''}>
+        <td style="text-align:center;">${i+1}</td>
+        <td style="font-family:'Courier New',monospace; direction:ltr; text-align:center;">${escapeHtml(w.barcode)}</td>
+        <td style="text-align:left; font-size:12px;">${escapeHtml(w.desc || '')}</td>
+        <td style="text-align:center; font-weight:bold;">${w.qty}</td>
+        <td style="text-align:left; font-size:11px;">${escapeHtml(wdUsedLabel(w))}</td>
+        <td style="text-align:center;">${escapeHtml(w.caseNumber || '—')}</td>
+        <td style="text-align:left; font-size:11px;">${escapeHtml(w.time)}</td>
+      </tr>`).join('');
+
+  const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+  <head><meta charset="utf-8"><title>Parts Withdrawal Log</title>
+  <style>
+    body{ font-family:'Segoe UI',Arial,sans-serif; }
+    h1{ font-size:22px; margin:0 0 2px; }
+    .sub{ color:#555; font-size:12px; margin-bottom:2px; }
+    .rpt-head{ border-bottom:3px solid #FF5800; padding-bottom:10px; margin-bottom:22px; }
+    .rpt-head img{ height:46px; }
+    table{ border-collapse:collapse; width:100%; margin-top:14px; border:1.5px solid #333; }
+    th{ background:#FF5800; color:#fff; padding:7px 6px; font-size:11px; border:1px solid #cc4600; }
+    td{ border:1px solid #999; padding:6px; font-size:11.5px; }
+  </style></head>
+  <body dir="ltr">
+    <div class="rpt-head"><img src="${WD_LOGO_LOC}" width="150" height="51" alt="Swisslog Healthcare"></div>
+    <h1>Parts Withdrawal Log${site ? ' - ' + escapeHtml(site) : ''}</h1>
+    <div class="sub">Exported: ${new Date().toLocaleString('en-GB')} &nbsp;|&nbsp; Records: ${withdrawals.length} &nbsp;|&nbsp; Total pieces withdrawn: ${withdrawals.reduce((a,w)=>a+(w.qty||0),0)}</div>
+    <table>
+      <thead><tr>
+        <th style="width:26px;">#</th>
+        <th style="width:95px;">Part No.<br>(Barcode)</th>
+        <th style="width:200px;">Description</th>
+        <th style="width:30px;">Qty</th>
+        <th style="width:150px;">Used in</th>
+        <th style="width:90px;">Case No.</th>
+        <th style="width:110px;">Date / time</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </body></html>`;
+
+  const boundary = '----=_NextPart_WithdrawalReport';
+  const htmlB64 = btoa(unescape(encodeURIComponent(html)));
+  let mhtml =
+    'MIME-Version: 1.0\r\n' +
+    `Content-Type: multipart/related; boundary="${boundary}"; type="text/html"\r\n\r\n` +
+    `--${boundary}\r\n` +
+    'Content-Type: text/html; charset="utf-8"\r\n' +
+    'Content-Transfer-Encoding: base64\r\n' +
+    'Content-Location: file:///C:/wd/report.htm\r\n\r\n' +
+    wrap76(htmlB64) + '\r\n\r\n';
+  const logoM = SWISSLOG_LOGO.match(/^data:(image\/jpeg);base64,(.+)$/i);
+  if(logoM){
+    mhtml += `--${boundary}\r\n` +
+      `Content-Type: ${logoM[1]}\r\n` +
+      'Content-Transfer-Encoding: base64\r\n' +
+      `Content-Location: ${WD_LOGO_LOC}\r\n\r\n` +
+      wrap76(logoM[2]) + '\r\n\r\n';
+  }
+  mhtml += `--${boundary}--`;
+
+  const blob = new Blob([mhtml], { type:'application/msword' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'Parts_Withdrawal_Log_' + new Date().toISOString().slice(0,10) + '.doc';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(()=> URL.revokeObjectURL(url), 2000);
+  toast('Withdrawal Word report ✓');
+}
+
+function exportWdExcel(){
+  if(withdrawals.length === 0){ toast('No withdrawals to export'); return; }
+  const stamp = new Date().toISOString().slice(0,10);
+  const rows = withdrawals.slice().reverse().map((w,i)=> ({
+    '#': i+1, 'Part No. (Barcode)': w.barcode, 'Description': w.desc || '',
+    'Qty': w.qty, 'Used in': wdUsedLabel(w), 'Case No.': w.caseNumber || '', 'Date / time': w.time
+  }));
+  const widths = [4,20,40,6,26,16,20];
+  const subtitle = 'Exported: ' + new Date().toLocaleString('en-GB');
+
+  if(typeof ExcelJS !== 'undefined'){
+    buildBrandedXlsx({
+      sheetName:'Withdrawals',
+      title:'Parts Withdrawal Log' + (getProject() ? ' - ' + getProject() : ''),
+      subtitle, rows, colWidths: widths,
+      fileName:`Parts_Withdrawal_Log_${stamp}.xlsx`
+    }).then(()=> toast('Withdrawal Excel report ✓'))
+      .catch(err=>{ console.error(err); toast('Excel export failed'); });
+    return;
+  }
+
+  const ws = XLSX.utils.json_to_sheet(rows, { origin:'A3' });
+  XLSX.utils.sheet_add_aoa(ws, [
+    ['Swisslog Healthcare  |  Parts Withdrawal Log' + (getProject() ? ' - ' + getProject() : '')],
+    [subtitle]
+  ], { origin:'A1' });
+  ws['!cols'] = widths.map(w=>({wch:w}));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Withdrawals');
+  XLSX.writeFile(wb, `Parts_Withdrawal_Log_${stamp}.xlsx`);
+  toast('Withdrawal Excel report ✓');
+}
+
+/* ---------- navigation: Reports view + Withdrawal shortcut ---------- */
+function openReports(){
+  closeMenu();
+  el('reportsView').classList.add('open');
+  window.scrollTo(0,0);
+}
+function closeReports(){ el('reportsView').classList.remove('open'); }
+
+el('btnOpenReports').addEventListener('click', ()=> navTo('reports'));
+el('reportsBack').addEventListener('click', navBack);
+el('repWdWord').addEventListener('click', ()=>{ closeMenu(); exportWdWord(); });
+el('repWdExcel').addEventListener('click', ()=>{ closeMenu(); exportWdExcel(); });
+el('brandLogoReports').src = SWISSLOG_LOGO_HDR;
+
+/* ================= UPDATE PARTS =================
+   A dedicated "find a part" screen that hands off into the normal edit form
+   (startEdit) — no duplicate editing UI to maintain.                       */
+let updScanMode = false;
+let updCamRunning = false;
+let updLastRead = { code:null, t:0 };
+
+function openUpdateParts(){
+  closeMenu();
+  el('updateView').classList.add('open');
+  updResetToScan();
+  window.scrollTo(0,0);
+}
+function closeUpdateView(){
+  if(updCamRunning) stopUpdCam();
+  el('updateView').classList.remove('open');
+}
+function showUpdAlert(html, kind){
+  const a = el('updAlert');
+  a.className = 'cons-alert show ' + (kind || 'red');
+  a.innerHTML = html;
+}
+function hideUpdAlert(){ el('updAlert').classList.remove('show'); el('updAlert').innerHTML = ''; }
+
+let updFoundEntry = null;
+
+function updResetToScan(){
+  updFoundEntry = null;
+  el('updScanCard').style.display = 'block';
+  el('updDetailsCard').style.display = 'none';
+  el('updManual').value = '';
+  hideUpdAlert();
+  updLastRead = { code:null, t:0 };
+}
+
+function updDeviceWhereLabel(e){
+  const parts = [...(e.devices||[])];
+  if(e.subs && e.subs.length) parts.push(...e.subs);
+  return parts.length ? parts.join(', ') : '—';
+}
+
+function renderUpdDetails(e){
+  const onShelf = Math.max(0, (e.qty||0) - (e.orgQty||[]).reduce((a,b)=>a+(b||0),0));
+  const orgLines = (e.orgQty||[]).map((n,i)=> n>0 ? `Organizer ${i+1}: <b>${n}</b>` : null).filter(Boolean).join(' &nbsp;|&nbsp; ');
+  const photoHtml = e.photo ? `<img src="${e.photo}" style="width:64px; height:64px; object-fit:cover; border-radius:8px; border:1px solid var(--border); float:right; margin-left:10px;">` : '';
+
+  el('updDetailsBody').innerHTML = `
+    ${photoHtml}
+    <div style="font-family:var(--font-mono); font-size:15px; font-weight:700;">${escapeHtml(e.barcode)}</div>
+    <div style="margin:4px 0 10px; color:var(--text-dim); font-size:13px;">${escapeHtml(e.desc || 'No description')}</div>
+    <div style="clear:both;"></div>
+    <div class="ci-meta">Where used: ${escapeHtml(updDeviceWhereLabel(e))}</div>
+    <div class="ci-meta">Confidence: ${e.conf === 'High' ? 'High' : 'Low'}</div>
+    <div class="ci-meta" style="margin-top:8px; font-size:13px;">
+      <b>Qty:</b> ${e.qty||0} &nbsp;|&nbsp; <b>Box:</b> ${e.box||1} &nbsp;|&nbsp; <b>Min. stock:</b> ${(typeof e.minStock==='number')?e.minStock:1}
+    </div>
+    <div class="ci-meta" style="font-size:13px;"><b>On box:</b> ${onShelf}${orgLines ? ' &nbsp;|&nbsp; ' + orgLines : ''}</div>
+    <div class="ci-meta" style="margin-top:8px; color:var(--text-faint);">Logged: ${escapeHtml(e.time||'—')}${e.lastTime ? ' · Last updated: ' + escapeHtml(e.lastTime) : ''}</div>
+  `;
+}
+
+function updCapture(code){
+  code = bcKey(code);
+  if(!code) return;
+  const now = Date.now();
+  if(code === updLastRead.code && now - updLastRead.t < 1200) return;
+  updLastRead = { code, t: now };
+  if(updCamRunning) stopUpdCam();
+
+  const entry = entries.find(e=> bcKey(e.barcode) === code);
+  if(!entry){
+    showUpdAlert('⚠ <b>Not registered.</b><br>Barcode <span class="code">' + escapeHtml(code) +
+      '</span> is not in the inventory yet.<br><br>Add it first from <b>➕ Add</b>.', 'red');
+    return;
+  }
+
+  // show full details first — editing is a separate, explicit step
+  updFoundEntry = entry;
+  hideUpdAlert();
+  el('updScanCard').style.display = 'none';
+  el('updDetailsCard').style.display = 'block';
+  renderUpdDetails(entry);
+}
+
+function updGoEdit(){
+  if(!updFoundEntry) return;
+  const id = updFoundEntry.id;
+  closeUpdateView();
+  el('homeView').classList.remove('open');
+  el('consView').classList.remove('open');
+  el('orgView').classList.remove('open');
+  el('wdView').classList.remove('open');
+  el('reportsView').classList.remove('open');
+  startEdit(id);
+  window.scrollTo(0,0);
+  toast('Editing ' + updFoundEntry.barcode);
+}
+
+async function startUpdCam(){
+  if(updCamRunning) return;
+  updScanMode = true; updCamRunning = true;
+  el('updStartCam').style.display = 'none';
+  el('updStopCam').style.display = 'block';
+  el('updReader').appendChild(el('reader'));
+  el('updScanBox').classList.remove('idle');
+  try{ await startCamera(); }
+  catch(err){ toast('Camera failed: ' + (err.message || err.name)); stopUpdCam(); }
+}
+function stopUpdCam(){
+  updScanMode = false; updCamRunning = false;
+  el('updStartCam').style.display = 'block';
+  el('updStopCam').style.display = 'none';
+  el('updScanBox').classList.add('idle');
+  if(cameraRunning){ try{ stopCamera(); }catch(_){ } }
+  const reader = el('reader'), mainBox = el('scanBox');
+  if(reader && mainBox && reader.parentElement !== mainBox){
+    mainBox.insertBefore(reader, mainBox.firstChild);
+  }
+}
+
+el('btnOpenUpdate').addEventListener('click', ()=> navTo('update'));
+el('updBack').addEventListener('click', navBack);
+
+el('updStartCam').addEventListener('click', startUpdCam);
+el('updStopCam').addEventListener('click', stopUpdCam);
+el('updManualAdd').addEventListener('click', ()=>{
+  const v = el('updManual').value.trim();
+  if(!v){ toast('Type a barcode'); return; }
+  el('updManual').value = '';
+  updCapture(v);
+});
+el('updManual').addEventListener('keydown', e=>{ if(e.key === 'Enter') el('updManualAdd').click(); });
+el('updEditBtn').addEventListener('click', updGoEdit);
+el('updScanAnother').addEventListener('click', updResetToScan);
+el('brandLogoUpd').src = SWISSLOG_LOGO_HDR;
+
+
 
 
 restoreEntries();
 renderHistory();
+wdRestore();
+el('brandLogoWd').src = SWISSLOG_LOGO_HDR;
+el('brandLogoOrg').src = SWISSLOG_LOGO_HDR;
 </script>
 </body>
 </html>
