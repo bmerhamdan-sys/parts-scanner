@@ -803,7 +803,7 @@
 
     <button class="btn btn-primary btn-wide home-go" id="goEntry">➕ Add / scan parts</button>
     <button class="btn btn-wide home-go" id="goWithdraw">🔧 Parts Withdrawal</button>
-    <button class="btn btn-wide home-go" id="goOrganizer">🧰 Parts Organizer</button>
+    <button class="btn btn-wide home-go" id="goSearchUpdate">🔍 Search and update part</button>
     <button class="btn btn-wide home-go" id="goConsumables">📦 Box Inventory</button>
     <button class="btn btn-wide home-go" id="goReports">📑 Reports</button>
   </div>
@@ -1404,7 +1404,7 @@ function scanBeep(){
   }catch(e){}
 }
 
-const APP_VERSION = 'v13.1';
+const APP_VERSION = 'v13.2';
 document.getElementById('appVersion').textContent = APP_VERSION;
 
 /* ---------- slide-in menu ---------- */
@@ -4657,7 +4657,7 @@ el('btnHome').addEventListener('click', ()=> navTo('home'));
 el('homeMenu').addEventListener('click', openMenu);
 el('btnAddParts').addEventListener('click', ()=> navTo('entry'));
 el('goEntry').addEventListener('click', ()=> navTo('entry'));
-el('goOrganizer').addEventListener('click', ()=> navTo('org'));
+el('goSearchUpdate').addEventListener('click', ()=> navTo('update'));
 el('goConsumables').addEventListener('click', ()=> navTo('cons'));
 el('goReports') && el('goReports').addEventListener('click', ()=> navTo('reports'));
 
