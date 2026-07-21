@@ -240,6 +240,21 @@
   .box-chip.org{ background:var(--teal-tint); border-color:var(--teal); color:var(--teal-ink); }
   .box-chip.org b{ color:var(--teal-ink); }
   .box-chip-empty{ font-size:11.5px; color:var(--text-faint); }
+  /* Search and Update: a small "carton" icon with the box number on it */
+  .box-icon{
+    display:inline-flex; flex-direction:column; align-items:center; justify-content:center;
+    width:48px; height:48px; border-radius:9px; flex-shrink:0;
+    background:linear-gradient(155deg, #c9812f, #9c5f22);
+    border:1.5px solid #7d4a18; color:#fff; box-shadow:0 2px 5px rgba(0,0,0,0.18);
+  }
+  .box-icon .cap{ font-size:7.5px; font-weight:800; letter-spacing:.6px; opacity:.9; margin-bottom:1px; }
+  .box-icon .num{ font-size:19px; font-weight:800; line-height:1; }
+  .upd-photo-big{
+    width:100%; max-height:260px; object-fit:contain; border-radius:12px;
+    border:1px solid var(--border); background:var(--surface-2); display:block; margin-bottom:12px;
+  }
+  .upd-pick{ cursor:pointer; }
+  .upd-pick:active{ opacity:.7; }
   .box-chip.cons{ background:var(--amber-glow); border-color:var(--amber); color:var(--amber); }
   .box-chip.cons b{ color:var(--amber); }
   .box-chip.cons.bad{ background:var(--laser-glow); border-color:var(--laser); color:var(--laser); }
@@ -1116,8 +1131,8 @@
       <button class="btn btn-primary btn-wide" id="updStartCam" style="margin-top:12px;">▶ Start camera</button>
       <button class="btn btn-stop btn-wide" id="updStopCam" style="display:none; margin-top:12px;">⏹ Stop camera</button>
       <div class="scan-row" style="margin-top:10px;">
-        <input type="text" id="updManual" placeholder="Or type the barcode">
-        <button class="btn" id="updManualAdd">Enter</button>
+        <input type="text" id="updManual" placeholder="Barcode or part name">
+        <button class="btn" id="updManualAdd">Search</button>
       </div>
       <div class="cons-alert" id="updAlert"></div>
     </div>
@@ -1127,6 +1142,12 @@
       <div id="updDetailsBody"></div>
       <button class="btn btn-wide" id="updEditBtn" style="background:var(--blue); border-color:var(--blue); color:#fff; margin-top:14px;">✏️ Edit this part</button>
       <button class="btn btn-wide" id="updScanAnother" style="background:var(--surface-2); color:var(--text); margin-top:8px;">🔍 Scan another part</button>
+    </div>
+
+    <div class="card" id="updPickerCard" style="display:none;">
+      <div class="hist-head"><div class="t">Multiple matches — pick one</div></div>
+      <div id="updPickerList"></div>
+      <button class="btn btn-wide" id="updPickerBack" style="background:var(--surface-2); color:var(--text); margin-top:10px;">🔍 Search again</button>
     </div>
   </div>
 
@@ -1404,7 +1425,7 @@ function scanBeep(){
   }catch(e){}
 }
 
-const APP_VERSION = 'v13.2';
+const APP_VERSION = 'v13.3';
 document.getElementById('appVersion').textContent = APP_VERSION;
 
 /* ---------- slide-in menu ---------- */
@@ -5072,6 +5093,7 @@ function updResetToScan(){
   updFoundEntry = null;
   el('updScanCard').style.display = 'block';
   el('updDetailsCard').style.display = 'none';
+  el('updPickerCard').style.display = 'none';
   el('updManual').value = '';
   hideUpdAlert();
   updLastRead = { code:null, t:0 };
@@ -5086,45 +5108,90 @@ function updDeviceWhereLabel(e){
 function renderUpdDetails(e){
   const onShelf = Math.max(0, (e.qty||0) - (e.orgQty||[]).reduce((a,b)=>a+(b||0),0));
   const orgLines = (e.orgQty||[]).map((n,i)=> n>0 ? `Organizer ${i+1}: <b>${n}</b>` : null).filter(Boolean).join(' &nbsp;|&nbsp; ');
-  const photoHtml = e.photo ? `<img src="${e.photo}" style="width:64px; height:64px; object-fit:cover; border-radius:8px; border:1px solid var(--border); float:right; margin-left:10px;">` : '';
+  const photoHtml = e.photo
+    ? `<img src="${e.photo}" class="upd-photo-big" alt="">`
+    : `<div class="upd-photo-big" style="display:flex; align-items:center; justify-content:center; height:120px; color:var(--text-faint); font-size:12px;">No photo</div>`;
 
   el('updDetailsBody').innerHTML = `
+    <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:10px;">
+      <div style="min-width:0;">
+        <div style="font-family:var(--font-mono); font-size:15px; font-weight:700;">${escapeHtml(e.barcode)}</div>
+        <div style="margin-top:4px; color:var(--text-dim); font-size:13px;">${escapeHtml(e.desc || 'No description')}</div>
+      </div>
+      <div class="box-icon"><div class="cap">BOX</div><div class="num">${e.box||1}</div></div>
+    </div>
     ${photoHtml}
-    <div style="font-family:var(--font-mono); font-size:15px; font-weight:700;">${escapeHtml(e.barcode)}</div>
-    <div style="margin:4px 0 10px; color:var(--text-dim); font-size:13px;">${escapeHtml(e.desc || 'No description')}</div>
-    <div style="clear:both;"></div>
     <div class="ci-meta">Where used: ${escapeHtml(updDeviceWhereLabel(e))}</div>
     <div class="ci-meta">Confidence: ${e.conf === 'High' ? 'High' : 'Low'}</div>
     <div class="ci-meta" style="margin-top:8px; font-size:13px;">
-      <b>Qty:</b> ${e.qty||0} &nbsp;|&nbsp; <b>Box:</b> ${e.box||1} &nbsp;|&nbsp; <b>Min. stock:</b> ${(typeof e.minStock==='number')?e.minStock:1}
+      <b>Qty:</b> ${e.qty||0} &nbsp;|&nbsp; <b>Min. stock:</b> ${(typeof e.minStock==='number')?e.minStock:1}
     </div>
     <div class="ci-meta" style="font-size:13px;"><b>On box:</b> ${onShelf}${orgLines ? ' &nbsp;|&nbsp; ' + orgLines : ''}</div>
-    <div class="ci-meta" style="margin-top:8px; color:var(--text-faint);">Logged: ${escapeHtml(e.time||'—')}${e.lastTime ? ' · Last updated: ' + escapeHtml(e.lastTime) : ''}</div>
+    <div class="ci-meta" style="margin-top:10px; color:var(--text-faint);">Logged: ${escapeHtml(e.time||'—')}${e.lastTime ? ' · Last updated: ' + escapeHtml(e.lastTime) : ''}</div>
   `;
 }
 
-function updCapture(code){
-  code = bcKey(code);
-  if(!code) return;
-  const now = Date.now();
-  if(code === updLastRead.code && now - updLastRead.t < 1200) return;
-  updLastRead = { code, t: now };
-  if(updCamRunning) stopUpdCam();
-
-  const entry = entries.find(e=> bcKey(e.barcode) === code);
-  if(!entry){
-    showUpdAlert('⚠ <b>Not registered.</b><br>Barcode <span class="code">' + escapeHtml(code) +
-      '</span> is not in the inventory yet.<br><br>Add it first from <b>➕ Add</b>.', 'red');
-    return;
-  }
-
-  // show full details first — editing is a separate, explicit step
+function updShowOne(entry){
   updFoundEntry = entry;
   hideUpdAlert();
   el('updScanCard').style.display = 'none';
   el('updDetailsCard').style.display = 'block';
+  el('updPickerCard').style.display = 'none';
   renderUpdDetails(entry);
 }
+
+function updShowPicker(matches, query){
+  hideUpdAlert();
+  el('updScanCard').style.display = 'none';
+  el('updDetailsCard').style.display = 'none';
+  el('updPickerCard').style.display = 'block';
+  el('updPickerList').innerHTML = matches.slice(0, 40).map(e=> `
+    <div class="cons-item upd-pick" data-id="${e.id}">
+      <div class="ci-body">
+        <div class="ci-code">${escapeHtml(e.barcode)}</div>
+        <div class="ci-meta">${escapeHtml(e.desc || 'No description')}</div>
+        <div class="ci-meta">Box ${e.box||1} · Qty ${e.qty||0}</div>
+      </div>
+    </div>`).join('');
+  el('updPickerList').querySelectorAll('.upd-pick').forEach(row=>{
+    row.addEventListener('click', ()=>{
+      const found = entries.find(x=> x.id === Number(row.dataset.id));
+      if(found) updShowOne(found);
+    });
+  });
+}
+
+// Accepts a scanned/typed barcode OR a part-name search — same matching the
+// main parts list already uses (barcode, description, or device/where-used).
+function updRunSearch(text){
+  text = String(text || '').trim();
+  if(!text) return;
+  const now = Date.now();
+  if(text === updLastRead.code && now - updLastRead.t < 1200) return;
+  updLastRead = { code:text, t:now };
+  if(updCamRunning) stopUpdCam();
+
+  const exact = entries.find(e=> bcKey(e.barcode) === bcKey(text));
+  if(exact){ updShowOne(exact); return; }
+
+  const q = text.toLowerCase();
+  const matches = entries.filter(e=>
+    String(e.barcode || '').toLowerCase().includes(q) ||
+    String(e.desc || '').toLowerCase().includes(q) ||
+    String(updDeviceWhereLabel(e) || '').toLowerCase().includes(q)
+  );
+
+  if(matches.length === 0){
+    showUpdAlert('⚠ <b>No match.</b><br>Nothing found for "' + escapeHtml(text) +
+      '".<br><br>Add it first from <b>➕ Add</b> if it\'s a new part.', 'red');
+    return;
+  }
+  if(matches.length === 1){ updShowOne(matches[0]); return; }
+  updShowPicker(matches, text);
+}
+
+// kept for the camera scan path, which always hands over an exact barcode
+function updCapture(code){ updRunSearch(code); }
 
 function updGoEdit(){
   if(!updFoundEntry) return;
@@ -5169,13 +5236,14 @@ el('updStartCam').addEventListener('click', startUpdCam);
 el('updStopCam').addEventListener('click', stopUpdCam);
 el('updManualAdd').addEventListener('click', ()=>{
   const v = el('updManual').value.trim();
-  if(!v){ toast('Type a barcode'); return; }
+  if(!v){ toast('Type a barcode or part name'); return; }
   el('updManual').value = '';
-  updCapture(v);
+  updRunSearch(v);
 });
 el('updManual').addEventListener('keydown', e=>{ if(e.key === 'Enter') el('updManualAdd').click(); });
 el('updEditBtn').addEventListener('click', updGoEdit);
 el('updScanAnother').addEventListener('click', updResetToScan);
+el('updPickerBack').addEventListener('click', updResetToScan);
 el('brandLogoUpd').src = SWISSLOG_LOGO_HDR;
 
 
