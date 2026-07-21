@@ -745,7 +745,10 @@
       <button class="menu-item" id="btnTheme">🌙 Switch day / night theme</button>
     </div>
 
-    <div class="menu-foot"><span id="appVersionMenu"></span></div>
+    <div class="menu-foot">
+      <span id="appVersionMenu"></span><br>
+      <span id="lastTxnMenu" style="font-size:11px; opacity:.75;"></span>
+    </div>
   </aside>
 
   <!-- ================= CONSUMABLES INVENTORY VIEW ================= -->
@@ -1309,6 +1312,19 @@ const el = id => document.getElementById(id);
    is migrated in automatically, once, the first time the page loads.                        */
 const IDB_NAME = 'PartsScannerDB';
 const IDB_STORE = 'kv';
+const LASTTXN_KEY = 'partsScanner.lastTxn';
+
+// updates both the in-memory display and the persisted "last saved" marker,
+// so the menu always shows when data was actually written — not just attempted
+async function recordTxn(){
+  const t = new Date().toLocaleString('en-GB', { hour12:true });
+  showLastTxn(t);
+  try{ await idbSet(LASTTXN_KEY, t); }catch(_){ }
+}
+function showLastTxn(t){
+  const node = document.getElementById('lastTxnMenu');
+  if(node) node.textContent = t ? ('Last saved: ' + t) : 'Nothing saved yet';
+}
 let _idbPromise = null;
 
 function idbOpen(){
@@ -1388,7 +1404,7 @@ function scanBeep(){
   }catch(e){}
 }
 
-const APP_VERSION = 'v13.0';
+const APP_VERSION = 'v13.1';
 document.getElementById('appVersion').textContent = APP_VERSION;
 
 /* ---------- slide-in menu ---------- */
@@ -1442,6 +1458,7 @@ let entries = [];
 const STORE_KEY = 'partsScanner.entries.v1';
 async function persist(){
   const ok = await idbSet(STORE_KEY, JSON.stringify(entries));
+  if(ok){ recordTxn(); }
   if(!ok){
     // A toast here would get silently overwritten by whatever success toast
     // the calling code shows right after (e.g. "Imported ✓", "Saved ✓") —
@@ -3832,6 +3849,7 @@ let consTab = 'ok';
 
 async function consPersist(){
   const ok = await idbSet(CONS_KEY, JSON.stringify(consumables));
+  if(ok){ recordTxn(); }
   if(!ok){
     alert('⚠ Could not save Box Inventory.\n\n' +
       'This change has NOT been saved. Export a JSON backup now (☰ menu → ' +
@@ -4684,6 +4702,7 @@ let wdLastRead = { code:null, t:0 };
 
 async function wdPersist(){
   const ok = await idbSet(WD_KEY, JSON.stringify(withdrawals));
+  if(ok){ recordTxn(); }
   if(!ok){
     alert('⚠ Could not save the withdrawal log.\n\n' +
       'This change has NOT been saved. Export a JSON backup now (☰ menu → ' +
@@ -5168,6 +5187,7 @@ el('brandLogoUpd').src = SWISSLOG_LOGO_HDR;
   await restoreEntries();
   await consRestore();
   await wdRestore();
+  try{ showLastTxn(await idbGet(LASTTXN_KEY)); }catch(_){ showLastTxn(null); }
   renderHistory();          // also refreshes the Home dashboard
   if(typeof renderWdList === 'function') renderWdList();
   if(typeof renderConsList === 'function') renderConsList();
