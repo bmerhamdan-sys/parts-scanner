@@ -1298,12 +1298,13 @@
 
       <div class="cons-nextwrap" id="orgQtyPanel">
         <div class="cons-next-msg" id="orgFound"></div>
+        <div style="font-size:12.5px; color:var(--text-faint); text-align:center; margin-bottom:4px;">How many are you adding to this organizer now?</div>
         <div class="qty-row" style="margin-bottom:10px;">
           <button class="btn qty-btn" id="orgMinus">−</button>
           <input type="number" id="orgQtyInput" min="0" value="1" inputmode="numeric">
           <button class="btn qty-btn" id="orgPlus">+</button>
         </div>
-        <button class="btn btn-wide" id="orgSave" style="background:var(--green); border-color:var(--green); color:#fff; margin-bottom:8px;">✓ Save quantity in this organizer</button>
+        <button class="btn btn-wide" id="orgSave" style="background:var(--green); border-color:var(--green); color:#fff; margin-bottom:8px;">✓ Add to this organizer</button>
         <button class="btn btn-wide" id="orgCancel" style="background:var(--surface-2); color:var(--text);">✕ Cancel</button>
       </div>
     </div>
@@ -1445,7 +1446,7 @@ function scanBeep(){
   }catch(e){}
 }
 
-const APP_VERSION = 'v13.9';
+const APP_VERSION = 'v14.2';
 document.getElementById('appVersion').textContent = APP_VERSION;
 
 /* ---------- slide-in menu ---------- */
@@ -3148,6 +3149,8 @@ el('btnSave').addEventListener('click', ()=>{
 
   current = { barcode:null, devices:[], subs:[], conf:null, photo:null, desc:'', descOriginal:'', descLang:'', descPhoto:null };
   el('readout').style.display='none';
+  orgInlineReset();
+  el('minStockInput').value = 1;
   resetDownstream();
   lockCard('cardDevice');
   window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -4024,7 +4027,12 @@ function startConsType(type){
 function neededCodes(){ return 1; }
 
 function updateConsProgress(){
-  el('consScanTitle').textContent = consRepairId ? 'Re-scan to repair' : 'Scan the barcode';
+  let title = 'Scan the barcode';
+  if(consRepairId){
+    const box = consumables.find(c=> c.id === consRepairId);
+    title = (box && box.status === 'bad') ? 'Re-scan to repair' : 'Re-scan to update this box';
+  }
+  el('consScanTitle').textContent = title;
   const done = consCodesBuf[0];
   el('consProgress').innerHTML = done
     ? '<div>Barcode: <span class="code">'+escapeHtml(done)+'</span> ✓</div>'
@@ -4054,17 +4062,24 @@ function consCapture(code){
   if(consCamRunning) stopConsCam();
   updateConsProgress();
 
-  // during a repair we save straight away; otherwise confirm the sticker first
-  if(consRepairId){ validateAndSaveCons(false); return; }
-
-  // pre-check duplicates: if duplicate, block Insert and show the duplicate options
-  const dup = consFindByCode(code, null).length > 0;
+  // always confirm the scanned barcode before saving — including while fixing
+  // or editing a box — since a misread barcode should never get committed
+  // without the user actually seeing and approving it first
+  const dup = consFindByCode(code, consRepairId).length > 0;
   if(dup){
     el('consStickerCode').innerHTML = 'Barcode <span class="code">' + escapeHtml(code) + '</span><br><span style="color:var(--laser); font-weight:700;">⚠ Duplicate — already used by another box. Change the sticker.</span>';
     el('consBtnsNormal').style.display = 'none';
     el('consBtnsDup').style.display = 'block';
+  } else if(consRepairId){
+    el('consStickerCode').textContent = 'Barcode captured ✓  (' + code + ')';
+    el('consStickerOk').textContent = '✓ Confirm this barcode';
+    el('consStickerBad').style.display = 'none';
+    el('consBtnsNormal').style.display = 'block';
+    el('consBtnsDup').style.display = 'none';
   } else {
     el('consStickerCode').textContent = 'Barcode captured ✓  (' + code + ')';
+    el('consStickerOk').textContent = '✓ Sticker OK — Insert';
+    el('consStickerBad').style.display = '';
     el('consBtnsNormal').style.display = 'block';
     el('consBtnsDup').style.display = 'none';
   }
@@ -4077,7 +4092,7 @@ function validateAndSaveCons(wrongSticker){
 
   const clash = consFindByCode(code, consRepairId);
 
-  // ----- REPAIR MODE -----
+  // ----- REPAIR MODE (also used to edit an already-healthy box) -----
   if(consRepairId){
     const box = consumables.find(c=> c.id === consRepairId);
     if(!box){ consRepairId = null; return; }
@@ -4085,11 +4100,14 @@ function validateAndSaveCons(wrongSticker){
       showConsAlert('⚠ <b>This barcode is still used by another box.</b> Change the sticker to a unique number, then re-scan.', 'red');
       return;
     }
+    const wasAlreadyHealthy = box.status === 'ok';
     box.codes = [code]; box.status = 'ok'; box.problem = ''; box.reason = '';
     box.time = new Date().toLocaleString('en-GB',{hour12:true});
     consRepairId = null;
     consPersist(); syncConsTabs();
-    showConsAlert('✓ <b>Fixed.</b> The box moved to the Healthy list.', 'green');
+    showConsAlert(wasAlreadyHealthy
+      ? '✓ <b>Barcode updated.</b>'
+      : '✓ <b>Fixed.</b> The box moved to the Healthy list.', 'green');
     consCodesBuf = [];
     return;
   }
@@ -4197,11 +4215,9 @@ function renderConsList(){
         <div class="ci-code">${codeText}</div>
         <div class="ci-meta">${c.status==='bad' ? '⚠ '+escapeHtml(c.reason) : c.time}</div>
       </div>
-      ${c.status==='bad' ? '<button class="ci-fix">Fix</button>' : ''}
+      ${c.status==='bad' ? '<button class="ci-fix">Fix</button>' : '<button class="ci-fix">Edit</button>'}
       <button class="ci-del" title="Delete">✕</button>`;
-    if(c.status==='bad'){
-      div.querySelector('.ci-fix').addEventListener('click', ()=> startConsRepair(c.id));
-    }
+    div.querySelector('.ci-fix').addEventListener('click', ()=> startConsRepair(c.id));
     div.querySelector('.ci-del').addEventListener('click', ()=>{
       consumables = consumables.filter(x=> x.id !== c.id);
       consPersist(); syncConsTabs();
@@ -4221,7 +4237,9 @@ function startConsRepair(id){
   el('consScanCard').classList.remove('dim');
   hideConsAlert();
   updateConsProgress();
-  showConsAlert('🔧 <b>Repair mode.</b> Re-label the box with a unique number, then scan '+(box.type==='BoxStation'?'both barcodes (they must match).':'the barcode.'), 'green');
+  showConsAlert(box.status === 'bad'
+    ? '🔧 <b>Repair mode.</b> Re-label the box with a unique number, then scan the barcode.'
+    : '✏️ <b>Edit mode.</b> Scan the new barcode for this box.', 'green');
   el('consScanCard').scrollIntoView({behavior:'smooth', block:'start'});
 }
 
@@ -4465,14 +4483,16 @@ function orgCapture(code){
   orgPending = entry;
   hideOrgAlert();
   const already = entry.orgQty[orgIndex] || 0;
-  el('orgQtyInput').value = already > 0 ? already : 1;
+  const onShelf = Math.max(0, entry.qty - entry.orgQty.reduce((a,b)=>a+(b||0),0));
+  el('orgQtyInput').max = onShelf;
+  el('orgQtyInput').value = onShelf > 0 ? 1 : 0;
   el('orgFound').innerHTML =
     '<span class="code">' + escapeHtml(entry.barcode) + '</span><br>' +
     escapeHtml(entry.desc || 'no description') +
     '<br><span style="color:var(--text-faint); font-weight:600;">Box ' + (entry.box || 1) +
     ' · total ' + entry.qty +
-    ' · on shelf ' + Math.max(0, entry.qty - entry.orgQty.reduce((a,b)=>a+(b||0),0)) +
-    (already > 0 ? ' · ' + already + ' already here' : '') + '</span>';
+    ' · on shelf ' + onShelf +
+    (already > 0 ? ' · ' + already + ' already in this organizer' : '') + '</span>';
   el('orgQtyPanel').classList.add('show');
 }
 
@@ -4481,27 +4501,30 @@ function orgSaveQty(){
   let v = parseInt(el('orgQtyInput').value, 10);
   if(isNaN(v) || v < 0) v = 0;
 
-  // organizer stock is part of the total Qty, never on top of it
-  const otherOrgs = orgPending.orgQty.reduce((a,n,i)=> a + (i === orgIndex ? 0 : (n||0)), 0);
-  const room = Math.max(0, (orgPending.qty || 0) - otherOrgs);
-  if(v > room){
-    showOrgAlert('⚠ <b>More than the recorded stock.</b><br>Total for this part is <b>' + orgPending.qty +
-      '</b>' + (otherOrgs ? ' and ' + otherOrgs + ' already sits in the other organizer' : '') +
-      ', so at most <b>' + room + '</b> can be here.<br><br>' +
-      'If the hospital really holds more, raise <b>Qty</b> on the part first.', 'red');
-    el('orgQtyInput').value = room;
+  if(v === 0){
+    showOrgAlert('Enter a quantity greater than 0 to add — or use the ✕ in the list below to remove this part from the organizer.', 'red');
     return;
   }
 
-  orgPending.orgQty[orgIndex] = v;
+  // this is how many pieces are being ADDED right now — capped by what is
+  // genuinely still sitting unallocated on the shelf for this part
+  const onShelf = Math.max(0, (orgPending.qty || 0) - orgPending.orgQty.reduce((a,b)=> a + (b||0), 0));
+  if(v > onShelf){
+    showOrgAlert('⚠ <b>More than what is on the shelf.</b><br>Only <b>' + onShelf +
+      '</b> of this part are currently on the shelf (not yet in an organizer), so that is the most you can add here.<br><br>' +
+      'If more just arrived, raise <b>Qty</b> on the part first.', 'red');
+    el('orgQtyInput').value = onShelf;
+    return;
+  }
+
+  const already = orgPending.orgQty[orgIndex] || 0;
+  orgPending.orgQty[orgIndex] = already + v;
   orgPending.lastTime = new Date().toLocaleString('en-GB', { hour12:true });
   persist();
   renderHistory();
   renderOrgList();
   el('orgQtyPanel').classList.remove('show');
-  showOrgAlert(v > 0
-      ? '✓ <b>Saved.</b> ' + v + ' pcs in Organizer ' + (orgIndex+1) + '.'
-      : '✓ <b>Removed</b> from Organizer ' + (orgIndex+1) + '.', 'green');
+  showOrgAlert('✓ <b>Added.</b> ' + v + ' pcs added to Organizer ' + (orgIndex+1) + ' — now ' + orgPending.orgQty[orgIndex] + ' pcs here.', 'green');
   orgPending = null;
   orgLastRead = { code:null, t:0 };
 }
@@ -4579,7 +4602,11 @@ el('orgMinus').addEventListener('click', ()=>{
   const i = el('orgQtyInput'); i.value = Math.max(0, (parseInt(i.value,10)||0) - 1); i.blur();
 });
 el('orgPlus').addEventListener('click', ()=>{
-  const i = el('orgQtyInput'); i.value = (parseInt(i.value,10)||0) + 1; i.blur();
+  const i = el('orgQtyInput');
+  const cap = parseInt(i.max, 10);
+  const next = (parseInt(i.value,10)||0) + 1;
+  i.value = (!isNaN(cap) && next > cap) ? cap : next;
+  i.blur();
 });
 el('orgSave').addEventListener('click', orgSaveQty);
 el('orgCancel').addEventListener('click', ()=>{
