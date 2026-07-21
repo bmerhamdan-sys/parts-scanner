@@ -425,6 +425,7 @@
   /* ---------- Choice grids ---------- */
   .choice-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
   .choice-grid.sub{ grid-template-columns:1fr 1fr; }
+  #wdSubGrid.choice-grid.sub{ grid-template-columns:1fr; }   /* stack one under another */
   .choice-btn{
     border:1px solid var(--border); background:var(--surface-2);
     border-radius:11px; padding:16px 10px; text-align:center; cursor:pointer;
@@ -742,7 +743,7 @@
       <button class="menu-item" id="btnOpenReports">📑 Reports</button>
       <button class="menu-item" id="btnExportData">⬇ Backup inventory (JSON)</button>
       <button class="menu-item" id="btnImportData">⬆ Import / merge backup</button>
-      <button class="menu-item danger" id="btnClear">🗑 Clear all logged parts</button>
+      <button class="menu-item danger" id="btnClear">🗑 Clear all data</button>
     </div>
 
     <div class="menu-section">
@@ -1201,7 +1202,7 @@
       </div>
     </header>
 
-    <div class="card">
+    <div class="card" id="wdScanCard">
       <div class="step-label"><div class="step-num">1</div><div class="step-title">Scan the part being withdrawn</div></div>
       <div class="scan-box idle" id="wdScanBox" style="aspect-ratio:auto; height:300px;"><div id="wdReader" style="width:100%; height:100%;"></div></div>
       <button class="btn btn-primary btn-wide" id="wdStartCam" style="margin-top:12px;">▶ Start camera</button>
@@ -1425,7 +1426,7 @@ function scanBeep(){
   }catch(e){}
 }
 
-const APP_VERSION = 'v13.3';
+const APP_VERSION = 'v13.8';
 document.getElementById('appVersion').textContent = APP_VERSION;
 
 /* ---------- slide-in menu ---------- */
@@ -3336,12 +3337,23 @@ function renderHistory(){
 }
 
 el('btnClear').addEventListener('click', ()=>{
-  if(entries.length===0) return;
-  if(confirm('Clear all logged parts?')){
+  const hasAnything = entries.length > 0 || consumables.length > 0 || withdrawals.length > 0;
+  if(!hasAnything) return;
+  if(confirm(
+    'Clear EVERYTHING — spare parts, Parts Organizer stock, Box Inventory, ' +
+    'and the withdrawal log?\n\n' +
+    'The site name and technician name are kept.\n\n' +
+    'This cannot be undone.')){
     cancelEdit();
     entries = [];
+    consumables = [];
+    withdrawals = [];
     renderHistory();
     persist();
+    consPersist();
+    wdPersist();
+    if(typeof renderConsList === 'function') renderConsList();
+    if(typeof renderWdList === 'function') renderWdList();
     // start a fresh inventory: back to box 1
     el('boxInput').value = 1;
     try{ localStorage.removeItem(BOX_KEY); }catch(e){}
@@ -4144,6 +4156,7 @@ function startConsRepair(id){
   el('consTypePhila').classList.toggle('selected', box.type==='PhilaBox');
   el('consTypeBox').classList.toggle('selected', box.type==='BoxStation');
   el('consScanCard').style.display='block';
+  el('consScanCard').classList.remove('dim');
   hideConsAlert();
   updateConsProgress();
   showConsAlert('🔧 <b>Repair mode.</b> Re-label the box with a unique number, then scan '+(box.type==='BoxStation'?'both barcodes (they must match).':'the barcode.'), 'green');
@@ -4776,12 +4789,14 @@ wdBuildSubGrid();
 
 document.querySelectorAll('[data-wd-device]').forEach(btn=>{
   btn.addEventListener('click', ()=>{
-    const dev = btn.dataset.wdDevice;
-    const on = btn.classList.toggle('selected');
-    wdDevices = on ? [...wdDevices, dev] : wdDevices.filter(x=> x !== dev);
-    const hasPill = wdDevices.includes('PillPick');
-    el('wdSubGrid').style.display = hasPill ? 'flex' : 'none';
-    if(!hasPill){ wdSubs = []; document.querySelectorAll('#wdSubGrid .choice-btn').forEach(b=> b.classList.remove('selected')); }
+    try{
+      const dev = btn.dataset.wdDevice;
+      const on = btn.classList.toggle('selected');
+      wdDevices = on ? [...wdDevices, dev] : wdDevices.filter(x=> x !== dev);
+      const hasPill = wdDevices.includes('PillPick');
+      el('wdSubGrid').style.display = hasPill ? 'grid' : 'none';
+      if(!hasPill){ wdSubs = []; document.querySelectorAll('#wdSubGrid .choice-btn').forEach(b=> b.classList.remove('selected')); }
+    }catch(err){ console.error('wd device toggle failed:', err); }
   });
 });
 
@@ -4794,6 +4809,8 @@ function hideWdAlert(){ el('wdAlert').classList.remove('show'); el('wdAlert').in
 
 function wdResetForm(){
   wdPending = null; wdDevices = []; wdSubs = [];
+  el('wdScanCard').style.display = 'block';
+  el('wdForm').classList.add('dim');
   el('wdForm').style.display = 'none';
   el('wdQtyInput').value = 1;
   el('wdCaseInput').value = '';
@@ -4826,39 +4843,51 @@ function wdCapture(code){
   hideWdAlert();
   el('wdQtyInput').max = entry.qty;
   el('wdQtyInput').value = 1;
+  const wdPhotoHtml = entry.photo
+    ? `<img src="${entry.photo}" class="upd-photo-big" alt="">`
+    : '';
   el('wdFound').innerHTML =
+    wdPhotoHtml +
     '<span class="code">' + escapeHtml(entry.barcode) + '</span><br>' +
     escapeHtml(entry.desc || 'no description') +
     '<br><span style="color:var(--text-faint); font-weight:600;">Box ' + (entry.box||1) +
     ' · current qty ' + entry.qty + '</span>';
+  el('wdScanCard').style.display = 'none';
+  el('wdForm').classList.remove('dim');
   el('wdForm').style.display = 'block';
 }
 
 function wdConfirm(){
   if(!wdPending) return;
-  let v = parseInt(el('wdQtyInput').value, 10);
-  if(isNaN(v) || v < 1) v = 1;
-  if(v > wdPending.qty) v = wdPending.qty;
+  try{
+    let v = parseInt(el('wdQtyInput').value, 10);
+    if(isNaN(v) || v < 1) v = 1;
+    if(v > wdPending.qty) v = wdPending.qty;
 
-  const caseNumber = el('wdCaseInput').value.trim();
-  const nowStr = new Date().toLocaleString('en-GB', { hour12:true });
+    const caseNumber = el('wdCaseInput').value.trim();
+    const nowStr = new Date().toLocaleString('en-GB', { hour12:true });
 
-  withdrawals.push({
-    id: Date.now()+Math.floor(Math.random()*1e5),
-    barcode: wdPending.barcode, desc: wdPending.desc || '', qty: v,
-    devices: [...wdDevices], subs: [...wdSubs], caseNumber, time: nowStr
-  });
-  wdPersist();
+    withdrawals.push({
+      id: Date.now()+Math.floor(Math.random()*1e5),
+      barcode: wdPending.barcode, desc: wdPending.desc || '', qty: v,
+      devices: [...wdDevices], subs: [...wdSubs], caseNumber, time: nowStr
+    });
+    wdPersist();
 
-  wdPending.qty = Math.max(0, (wdPending.qty || 0) - v);
-  wdPending.lastTime = nowStr;
-  clampOrgQty(wdPending);
-  persist();
-  renderHistory();
+    wdPending.qty = Math.max(0, (wdPending.qty || 0) - v);
+    wdPending.lastTime = nowStr;
+    clampOrgQty(wdPending);
+    persist();
+    renderHistory();
 
-  toast('Withdrew ' + v + ' × ' + wdPending.barcode + (caseNumber ? ' (' + caseNumber + ')' : ''));
-  wdResetForm();
-  renderWdList();
+    toast('Withdrew ' + v + ' × ' + wdPending.barcode + (caseNumber ? ' (' + caseNumber + ')' : ''));
+    wdResetForm();
+    renderWdList();
+  }catch(err){
+    console.error('wdConfirm failed:', err);
+    alert('⚠ Something went wrong while confirming this withdrawal:\n\n' + (err && err.message ? err.message : err) +
+      '\n\nNothing was recorded. Please try again, and if this repeats, let us know exactly which step triggers it.');
+  }
 }
 
 function wdUsedLabel(w){
