@@ -880,6 +880,10 @@
       <div class="hist-head">
         <div class="t">Logged consumables</div>
       </div>
+      <div class="search-row">
+        <input type="text" id="consSearch" placeholder="🔍 Search barcode">
+        <button class="btn search-cam" id="btnConsSearchCam" title="Scan a barcode with the camera">📷</button>
+      </div>
       <div class="cons-tabs">
         <button class="cons-tab active" id="consTabOk" data-tab="ok">✓ Healthy</button>
         <button class="cons-tab" id="consTabBad" data-tab="bad">⚠ Needs fixing</button>
@@ -1446,7 +1450,7 @@ function scanBeep(){
   }catch(e){}
 }
 
-const APP_VERSION = 'v14.2';
+const APP_VERSION = 'v14.3';
 document.getElementById('appVersion').textContent = APP_VERSION;
 
 /* ---------- slide-in menu ---------- */
@@ -1804,6 +1808,21 @@ function onBarcode(code){
   }
   if(consScanMode){
     consCapture(code);
+    return;
+  }
+  if(typeof consSearchScanMode !== 'undefined' && consSearchScanMode){
+    consSearchScanMode = false;
+    stopCamera();
+    const reader = el('reader'), mainBox = el('scanBox');
+    if(reader && mainBox && reader.parentElement !== mainBox){
+      mainBox.insertBefore(reader, mainBox.firstChild);
+    }
+    el('consScanBox').classList.add('idle');
+    el('consSearch').value = code;
+    consSearchFilter = code;
+    renderConsList();
+    toast('Showing results for ' + code);
+    el('consListCard').scrollIntoView({ behavior:'smooth', block:'start' });
     return;
   }
   if(searchScanMode){
@@ -3944,6 +3963,26 @@ let consCamRunning = false;
 let consScanner = null;
 let consRepairId = null;       // id of the box being repaired, or null
 let consTab = 'ok';
+let consSearchFilter = '';
+let consSearchScanMode = false;
+el('consSearch').addEventListener('input', e=>{
+  consSearchFilter = e.target.value;
+  renderConsList();
+});
+el('btnConsSearchCam').addEventListener('click', async ()=>{
+  if(consCamRunning){ toast('Finish the current scan first'); return; }
+  consSearchScanMode = true;
+  const reader = el('reader'), consBox = el('consScanBox');
+  if(reader && consBox && reader.parentElement !== consBox){
+    el('consReader').appendChild(reader);
+  }
+  consBox.classList.remove('idle');
+  el('consScanCard').style.display = 'block';
+  el('consScanCard').classList.remove('dim');
+  consBox.scrollIntoView({ behavior:'smooth', block:'start' });
+  toast('Point the camera at the box barcode to search');
+  if(!cameraRunning){ await startCamera(); }
+});
 
 async function consPersist(){
   const ok = await idbSet(CONS_KEY, JSON.stringify(consumables));
@@ -4191,10 +4230,15 @@ function syncConsTabs(){
 
 function renderConsList(){
   const list = el('consList');
-  const rows = consumables.filter(c=> consTab==='bad' ? c.status==='bad' : c.status==='ok');
+  const q = consSearchFilter.trim().toLowerCase();
+  const rows = consumables.filter(c=>{
+    if(consTab==='bad' ? c.status!=='bad' : c.status!=='ok') return false;
+    if(!q) return true;
+    return c.codes.some(code=> String(code).toLowerCase().includes(q));
+  });
   el('consCount').textContent = consumables.length;
   if(rows.length===0){
-    list.innerHTML = '<div class="hist-empty">'+(consTab==='bad'?'No problem boxes 🎉':'No consumables logged yet')+'</div>';
+    list.innerHTML = '<div class="hist-empty">'+(q ? 'No matches for "'+escapeHtml(consSearchFilter)+'"' : (consTab==='bad'?'No problem boxes 🎉':'No consumables logged yet'))+'</div>';
     // keep tab labels fresh
     const badCount = consumables.filter(c=>c.status==='bad').length;
     el('consTabBad').classList.toggle('bad-has', badCount>0);
