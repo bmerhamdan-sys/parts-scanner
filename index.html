@@ -275,7 +275,7 @@
     background:var(--teal-tint); border:1.5px solid var(--teal); color:var(--teal-ink);
     font-family:var(--font-mono); font-weight:700; font-size:15px;
   }
-  .qty-btn.sm, .qty-btn.sm2{ width:36px; height:36px; padding:0; font-size:17px; }
+  .qty-btn.sm, .qty-btn.sm2, .qty-btn.sm3{ width:36px; height:36px; padding:0; font-size:17px; }
   .report-row{ display:flex; gap:10px; }
   .report-row .export-btn{ flex:1; }
   .cons-top{
@@ -942,6 +942,25 @@
         <button class="btn qty-btn" id="qaPlus">+</button>
         <button class="btn btn-primary" id="qaAdd" style="flex:1;">➕ Add quantity</button>
       </div>
+      <div class="org-inline">
+        <div class="org-hint">Also put some of this into a Parts Organizer?</div>
+        <div class="org-btns">
+          <button class="org-toggle" id="qaOrgTog0" data-i="0">🧰 Organizer 1</button>
+          <button class="org-toggle" id="qaOrgTog1" data-i="1">🧰 Organizer 2</button>
+        </div>
+        <div class="org-qty" id="qaOrgRow0" style="display:none;">
+          <span>In Organizer 1:</span>
+          <button class="btn qty-btn sm3" data-qaorg="0" data-d="-1" tabindex="-1">−</button>
+          <input type="number" id="qaOrgIn0" min="0" value="1" inputmode="numeric">
+          <button class="btn qty-btn sm3" data-qaorg="0" data-d="1" tabindex="-1">+</button>
+        </div>
+        <div class="org-qty" id="qaOrgRow1" style="display:none;">
+          <span>In Organizer 2:</span>
+          <button class="btn qty-btn sm3" data-qaorg="1" data-d="-1" tabindex="-1">−</button>
+          <input type="number" id="qaOrgIn1" min="0" value="1" inputmode="numeric">
+          <button class="btn qty-btn sm3" data-qaorg="1" data-d="1" tabindex="-1">+</button>
+        </div>
+      </div>
     </div>
 
     <div class="hint" id="camHint"></div>
@@ -1426,7 +1445,7 @@ function scanBeep(){
   }catch(e){}
 }
 
-const APP_VERSION = 'v13.8';
+const APP_VERSION = 'v13.9';
 document.getElementById('appVersion').textContent = APP_VERSION;
 
 /* ---------- slide-in menu ---------- */
@@ -1955,6 +1974,39 @@ function hideDupNotices(){
   dupTargetId = null;
 }
 
+/* ---- organizer selection inside the Quick Add (duplicate-part) panel ---- */
+function qaOrgReset(){
+  [0,1].forEach(i=>{
+    el('qaOrgTog'+i).classList.remove('on');
+    el('qaOrgRow'+i).style.display = 'none';
+    el('qaOrgIn'+i).value = 1;
+  });
+}
+function qaOrgRead(){
+  return [0,1].map(i=>{
+    if(!el('qaOrgTog'+i).classList.contains('on')) return 0;
+    const v = parseInt(el('qaOrgIn'+i).value, 10);
+    return (isNaN(v) || v < 0) ? 0 : v;
+  });
+}
+[0,1].forEach(i=>{
+  el('qaOrgTog'+i).addEventListener('click', ()=>{
+    const on = el('qaOrgTog'+i).classList.toggle('on');
+    el('qaOrgRow'+i).style.display = on ? 'flex' : 'none';
+    // no .focus() here on purpose — the keyboard should only appear if the
+    // user taps the number itself, never just from switching the organizer on
+  });
+});
+document.querySelectorAll('[data-qaorg]').forEach(b=>{
+  b.addEventListener('pointerdown', e=> e.preventDefault());
+  b.addEventListener('click', ()=>{
+    const inp = el('qaOrgIn' + b.dataset.qaorg);
+    const d = parseInt(b.dataset.d, 10);
+    inp.value = Math.max(0, (parseInt(inp.value,10) || 0) + d);
+    inp.blur();
+  });
+});
+
 function getQaQty(){
   const v = parseInt(el('qaInput').value, 10);
   return (isNaN(v) || v < 1) ? 1 : v;
@@ -1969,13 +2021,22 @@ el('qaAdd').addEventListener('click', ()=>{
   const n = getQaQty();
   const exBox = ex.box || 1;
   ex.qty += n;
+  const addOrg = qaOrgRead();
+  if(addOrg.some(v=> v > 0)){
+    ex.orgQty = (ex.orgQty || [0,0]).map((v,i)=> (v||0) + addOrg[i]);
+    clampOrgQty(ex);
+  }
   ex.lastTime = new Date().toLocaleString('en-GB', { hour12:true });
   renderHistory();
   persist();
-  toast(`+${n} added to box ${exBox} — quantity is now ${ex.qty} ✓`);
+  const orgNote = addOrg.some(v=>v>0)
+    ? ' (' + addOrg.map((v,i)=> v>0 ? v+' → Organizer '+(i+1) : null).filter(Boolean).join(', ') + ')'
+    : '';
+  toast(`+${n} added to box ${exBox} — quantity is now ${ex.qty}${orgNote} ✓`);
   // ready for the next part
   current = { barcode:null, devices:[], subs:[], conf:null, photo:null, desc:'', descOriginal:'', descLang:'', descPhoto:null };
   el('readout').style.display='none';
+  qaOrgReset();
   resetDownstream();
   lockCard('cardDevice');
   window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1994,6 +2055,7 @@ function updateDupNotices(code){
   // quick-add panel under the barcode readout
   dupTargetId = ex.id;
   el('qaInput').value = 1;
+  qaOrgReset();
   const exBox = ex.box || 1;
   el('dupQuickInfo').innerHTML =
     `⚠ <b>Already logged</b> — qty <b>${ex.qty}</b> · ${escapeHtml(entryDeviceLabel(ex))} · Confidence: ${ex.conf}` +
