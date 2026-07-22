@@ -2221,9 +2221,10 @@ function updateDupNotices(code){
   el('dupQuickAdd').style.display='block';
 
   const pn = el('dupNotePhoto');
-  if(ex.photo){
+  const _dupImg = entryImage(ex);
+  if(_dupImg){
     pn.innerHTML = `⚠ <b>Already logged</b> (qty ${ex.qty}, 📦 box ${exBox}) and it already has a photo — <b>skip this step</b>.
-      <img src="${ex.photo}" alt="">`;
+      <img src="${_dupImg}" alt="">`;
   } else {
     pn.innerHTML = `⚠ <b>Already logged</b> (qty ${ex.qty}, 📦 box ${exBox}) but has <b>no photo yet</b> — you can add one now.`;
   }
@@ -3434,6 +3435,7 @@ el('fileImport').addEventListener('change', e=>{
     renderHistory();
     const saved = await persist();
     if(saved) toast(choice === 'merge' ? 'Merged ✓' : 'Imported ✓');
+    if(syncCatalogPhotos() > 0){ renderHistory(); try{ await persist(); }catch(_){}}
   };
   reader.onerror = ()=> alert('Could not read the file.');
   reader.readAsText(file);
@@ -3466,7 +3468,9 @@ el('fileCatalog').addEventListener('change', e=>{
     }
     try{ await idbSet(CATALOG_KEY, data); }catch(err){}
     setCatalogData(data);
-    toast('Catalog loaded — ' + catalogCount + ' parts ✓');
+    const synced = syncCatalogPhotos();
+    if(synced > 0){ renderHistory(); try{ await persist(); }catch(_){}}
+    toast('Catalog loaded — ' + catalogCount + ' parts' + (synced ? ' · ' + synced + ' matched in inventory' : '') + ' ✓');
   };
   reader.onerror = ()=> alert('Could not read the file.');
   reader.readAsText(file);
@@ -3529,6 +3533,29 @@ function entryDeviceLabel(e){
   ).join(' + ');
 }
 
+/* The image shown for a part: catalog image is the MAIN image for catalog
+   parts (per spec); the scanned photo is kept as a record and used as the
+   fallback for parts that aren't in the catalog. */
+function entryImage(e){
+  return (e && (e.catalogPhoto || e.photo)) || null;
+}
+
+/* Fill catalog images onto existing inventory entries that match the catalog,
+   without touching their scanned photo (kept in .photo). */
+function syncCatalogPhotos(){
+  if(!catalogCount || !Array.isArray(entries) || !entries.length) return 0;
+  let n = 0;
+  entries.forEach(e=>{
+    const rec = CATALOG[bcKey(e.barcode)];
+    if(rec && rec.image){
+      if(e.catalogPhoto !== rec.image) e.catalogPhoto = rec.image;
+      e.catalogMatched = true;
+      n++;
+    }
+  });
+  return n;
+}
+
 /* ---------- history (with live search) ---------- */
 let histFilter = '';
 el('histSearch').addEventListener('input', e=>{
@@ -3580,7 +3607,8 @@ function renderHistory(){
     const qtyBadge = e.qty > 1 ? `<span class="qty">×${e.qty}</span>` : '';
     const mismatchNote = e.mismatch ? ' · ⚠ Different classification on a later scan' : '';
     const catalogNote = e.catalogMatched ? ' · 📚 Catalog' : '';
-    const thumbHtml = e.photo ? `<img class="thumb" src="${e.photo}" alt="">` : `<div class="badge ${confClass}"></div>`;
+    const partImg = entryImage(e);
+    const thumbHtml = partImg ? `<img class="thumb" src="${partImg}" alt="">` : `<div class="badge ${confClass}"></div>`;
     const descHtml = e.desc ? `<div class="desc-note">📝 ${escapeHtml(e.desc)}</div>` : '';
     row.innerHTML = `
       ${thumbHtml}
@@ -3643,7 +3671,7 @@ function exportExcel(){
   const GROUP_NAMES = ['BoxPicker','PillPick','Shared'];
   const rows = sorted.map((e,i)=>({
     '#': i+1,
-    'Photo': e.photo ? '' : '—',                       // image is anchored over this cell
+    'Photo': entryImage(e) ? '' : '—',                 // image is anchored over this cell
     'Group': GROUP_NAMES[entryGroup(e)],
     'Part No. (Barcode)': e.barcode,
     'Description': e.desc || '',
@@ -3681,7 +3709,7 @@ function exportExcel(){
     (async ()=>{
       // build small thumbnails for part photos AND description photos separately
       // (keeps the file a sane size; each part can have zero, one, or both)
-      const withPartPhotos = sorted.map((e,i)=> ({ index:i, src: e.photo })).filter(p=> p.src);
+      const withPartPhotos = sorted.map((e,i)=> ({ index:i, src: entryImage(e) })).filter(p=> p.src);
       const withDescPhotos = sorted.map((e,i)=> ({ index:i, src: e.descPhoto })).filter(p=> p.src);
       const total = withPartPhotos.length + withDescPhotos.length;
       const partPhotos = [];
@@ -3942,8 +3970,9 @@ function exportWord(){
   function rowHtml(e, i){
     const deviceLabel = escapeHtml(entryDeviceLabel(e));
     let photoCell = `<span style="color:#aaa; font-size:11px;">No photo</span>`;
-    if(e.photo){
-      const m = e.photo.match(/^data:(image\/[a-z0-9.+-]+);base64,(.+)$/i);
+    const _wImg = entryImage(e);
+    if(_wImg){
+      const m = _wImg.match(/^data:(image\/[a-z0-9.+-]+);base64,(.+)$/i);
       if(m){
         const ext = m[1].toLowerCase() === 'image/png' ? 'png' : 'jpg';
         const loc = `file:///C:/parts/part_photo_${images.length}.${ext}`;
@@ -5159,8 +5188,9 @@ function wdCapture(code){
   hideWdAlert();
   el('wdQtyInput').max = entry.qty;
   el('wdQtyInput').value = 1;
-  const wdPhotoHtml = entry.photo
-    ? `<img src="${entry.photo}" class="upd-photo-big" alt="">`
+  const _wdImg = entryImage(entry);
+  const wdPhotoHtml = _wdImg
+    ? `<img src="${_wdImg}" class="upd-photo-big" alt="">`
     : '';
   el('wdFound').innerHTML =
     wdPhotoHtml +
@@ -5453,8 +5483,9 @@ function updDeviceWhereLabel(e){
 function renderUpdDetails(e){
   const onShelf = Math.max(0, (e.qty||0) - (e.orgQty||[]).reduce((a,b)=>a+(b||0),0));
   const orgLines = (e.orgQty||[]).map((n,i)=> n>0 ? `Organizer ${i+1}: <b>${n}</b>` : null).filter(Boolean).join(' &nbsp;|&nbsp; ');
-  const photoHtml = e.photo
-    ? `<img src="${e.photo}" class="upd-photo-big" alt="">`
+  const _updImg = entryImage(e);
+  const photoHtml = _updImg
+    ? `<img src="${_updImg}" class="upd-photo-big" alt="">`
     : `<div class="upd-photo-big" style="display:flex; align-items:center; justify-content:center; height:120px; color:var(--text-faint); font-size:12px;">No photo</div>`;
 
   el('updDetailsBody').innerHTML = `
@@ -5623,6 +5654,7 @@ el('brandLogoUpd').src = SWISSLOG_LOGO_HDR;
   await consRestore();
   await wdRestore();
   await loadCatalog();
+  if(syncCatalogPhotos() > 0){ try{ await persist(); }catch(_){}}
   try{ showLastTxn(await idbGet(LASTTXN_KEY)); }catch(_){ showLastTxn(null); }
   renderHistory();          // also refreshes the Home dashboard
   if(typeof renderWdList === 'function') renderWdList();
