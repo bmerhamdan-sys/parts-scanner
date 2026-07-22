@@ -747,6 +747,16 @@
     </div>
 
     <div class="menu-section">
+      <div class="menu-label">Parts catalog</div>
+      <button class="menu-item" id="btnImportCatalog">📚 Load parts catalog (JSON)</button>
+      <label class="menu-item" style="display:flex; align-items:center; justify-content:space-between; gap:10px; cursor:pointer;">
+        <span>✨ Auto-fill from catalog on scan</span>
+        <input type="checkbox" id="catalogAutofillToggle" style="width:20px; height:20px;">
+      </label>
+      <div class="menu-hint" id="catalogStatus">No catalog loaded yet.</div>
+    </div>
+
+    <div class="menu-section">
       <div class="menu-label">Modules</div>
       <button class="menu-item" id="btnHome">🏠 Home</button>
       <button class="menu-item" id="btnAddParts">➕ Add</button>
@@ -936,6 +946,19 @@
         <div class="val" id="readoutVal">—</div>
       </div>
       <button class="btn btn-ghost" id="btnRescan">Scan another ↻</button>
+    </div>
+
+    <!-- Catalog recall: shown when a scanned part is found in the master catalog -->
+    <div class="dup-note" id="catalogNote" style="display:none; border-color:var(--teal); background:var(--teal-tint);">
+      <div style="display:flex; gap:12px; align-items:flex-start;">
+        <img id="catalogNoteImg" alt="" style="width:64px; height:64px; object-fit:contain; border-radius:8px; background:#fff; flex:none;">
+        <div style="min-width:0;">
+          <div style="font-weight:700; color:var(--teal-ink);">📚 Recognized from catalog</div>
+          <div id="catalogNoteDesc" style="font-size:13px; margin-top:2px;"></div>
+          <div id="catalogNoteMeta" style="font-size:12px; color:var(--text-dim); margin-top:4px;"></div>
+          <div id="catalogNoteHint" style="font-size:12px; color:var(--teal-ink); margin-top:6px;">Name, machine &amp; photo filled in — just set the quantity and box below, then save.</div>
+        </div>
+      </div>
     </div>
 
     <div class="dup-note" id="dupQuickAdd">
@@ -1324,6 +1347,7 @@
       <div class="t">Logged parts</div>
     </div>
     <input type="file" accept="application/json,.json" id="fileImport" style="display:none;">
+    <input type="file" accept="application/json,.json" id="fileCatalog" style="display:none;">
     <div class="search-row">
       <input type="text" id="histSearch" placeholder="🔍 Search part no. / description / machine">
       <button class="btn search-cam" id="btnSearchCam" title="Scan a barcode with the camera">📷</button>
@@ -1450,7 +1474,7 @@ function scanBeep(){
   }catch(e){}
 }
 
-const APP_VERSION = 'v14.3';
+const APP_VERSION = 'v14.4';
 document.getElementById('appVersion').textContent = APP_VERSION;
 
 /* ---------- slide-in menu ---------- */
@@ -1497,6 +1521,46 @@ document.getElementById('btnTheme').addEventListener('click', ()=>{
 });
 
 const SUB_COMPONENTS = ["Not sure","AutoBox","Autophial","Autophial+","Pickring","PillPicker","DrugNest"];
+
+/* ============================================================
+   PARTS CATALOG  (BoxPicker + PillPick master lookup)
+   Scanning a known part auto-recalls its name, image and machine
+   so the technician only sets quantity + box + organizer.
+   The catalog is loaded once into IndexedDB (from an imported file
+   or a swisslog_master_catalog.json shipped next to this page) and
+   is kept SEPARATE from the live inventory.
+   ============================================================ */
+const CATALOG_KEY   = 'partsScanner.catalog.v1';
+const AUTOFILL_KEY  = 'partsScanner.catalogAutofill';
+let CATALOG = {};            // barcode -> { desc, devices, subs, image, ... }
+let catalogCount = 0;
+let catalogMeta = null;      // { version, generatedAt, sources }
+
+function catalogAutofillOn(){
+  try{ return localStorage.getItem(AUTOFILL_KEY) !== 'off'; }catch(e){ return true; }
+}
+function setCatalogData(data){
+  CATALOG = (data && data.parts && typeof data.parts === 'object') ? data.parts : {};
+  catalogCount = Object.keys(CATALOG).length;
+  catalogMeta = data ? { version:data.version, generatedAt:data.generatedAt, sources:data.sources } : null;
+  if(typeof updateCatalogStatus === 'function') updateCatalogStatus();
+}
+async function loadCatalog(){
+  let data = null;
+  try{ data = await idbGet(CATALOG_KEY); }catch(e){}
+  if(!data){
+    // fall back to a catalog file shipped alongside index.html (GitHub Pages)
+    try{
+      const res = await fetch('./swisslog_master_catalog.json', { cache:'no-store' });
+      if(res && res.ok){ data = await res.json(); try{ await idbSet(CATALOG_KEY, data); }catch(e){} }
+    }catch(e){ /* offline / not shipped — manual import still works */ }
+  }
+  setCatalogData(data);
+}
+function catalogLookup(code){
+  const k = bcKey(code);
+  return (k && CATALOG[k]) ? CATALOG[k] : null;
+}
 
 let entries = [];
 
@@ -1972,16 +2036,88 @@ async function readBarcodeWithGemini(file){
   return null;
 }
 
+function hideCatalogNote(){
+  const n = el('catalogNote');
+  if(n) n.style.display = 'none';
+}
+function showCatalogNote(rec){
+  const n = el('catalogNote');
+  if(!n) return;
+  el('catalogNoteImg').src = rec.image || '';
+  el('catalogNoteImg').style.display = rec.image ? 'block' : 'none';
+  el('catalogNoteDesc').textContent = rec.desc || '(no description in catalog)';
+  const where = (rec.devices||[]).map(d=>
+    d === 'PillPick' && rec.subs && rec.subs.length ? d + ' (' + rec.subs.join(', ') + ')' : d
+  ).join(' + ') || '—';
+  el('catalogNoteMeta').textContent = '🔧 ' + where + (rec.ref ? '  ·  Ref ' + rec.ref : '') + (rec.source === 'db-only' ? '  ·  from your data' : '  ·  official catalog');
+  // If PillPick and we don't know the sub-component, ask the user to pick it.
+  const needsSub = (rec.devices||[]).includes('PillPick') && !(current.subs && current.subs.length);
+  el('catalogNoteHint').textContent = needsSub
+    ? 'Name, machine & photo filled in — pick the PillPick component, then set quantity & box and save.'
+    : 'Name, machine & photo filled in — just set the quantity and box below, then save.';
+  n.style.display = 'block';
+}
+
+/* Prefill the Add flow from a catalog record (mirrors startEdit's UI wiring). */
+function applyCatalog(rec){
+  if(!rec) return false;
+  current.devices = Array.isArray(rec.devices) && rec.devices.length ? rec.devices.slice() : [];
+  current.subs    = Array.isArray(rec.subs) ? rec.subs.filter(s=> SUB_COMPONENTS.includes(s)) : [];
+  current.conf    = 'High';                       // known part → confident identification
+  current.desc    = rec.desc || '';
+  current.descOriginal = rec.descOriginal || '';
+  current.descLang     = rec.descOriginal ? 'Italian' : '';
+  current.photo   = rec.image || null;            // catalog image becomes the part photo
+  current.catalogMatched = true;
+  current.catalogPhoto   = rec.image || null;
+  current.fromCatalog    = true;
+
+  // reflect into the step cards
+  document.querySelectorAll('#cardDevice .choice-btn').forEach(b=>
+    b.classList.toggle('selected', current.devices.includes(b.dataset.device)));
+  const hasPill = current.devices.includes('PillPick');
+  el('cardSub').style.display = hasPill ? 'block' : 'none';
+  document.querySelectorAll('#subGrid .choice-btn').forEach(b=>
+    b.classList.toggle('selected', current.subs.includes(b.dataset.sub)));
+  updateConfSelection();
+
+  if(current.photo){
+    el('photoImg').src = current.photo;
+    el('photoThumb').classList.add('filled');
+    el('btnPhotoRemove').style.display = 'block';
+  }
+  el('descText').value = current.desc;
+  finalTranscript = current.desc ? current.desc + ' ' : '';
+  refreshClearDescBtn();
+
+  unlockCard('cardDevice');
+  if(hasPill) unlockCard('cardSub');
+  unlockCard('cardConf'); unlockCard('cardQty'); unlockCard('cardBox'); unlockCard('cardPhoto'); unlockCard('cardDesc');
+  renumber();
+  updateSaveState();
+  showCatalogNote(rec);
+  return true;
+}
+
 function setBarcode(code){
   cancelEdit();
   current.barcode = bcKey(code);
   current.devices = []; current.subs = []; current.conf = null; current.photo = null; current.desc = '';
   current.descOriginal = ''; current.descLang = ''; current.descPhoto = null;
+  current.catalogMatched = false; current.catalogPhoto = null; current.fromCatalog = false;
   el('readout').style.display='flex';
   el('readoutVal').textContent = code;
   resetDownstream();
   unlockCard('cardDevice');
   updateDupNotices(code);
+  // If it's NOT already in the inventory but IS in the catalog, auto-recall it.
+  if(dupTargetId === null && catalogAutofillOn()){
+    const rec = catalogLookup(code);
+    if(rec){
+      applyCatalog(rec);
+      toast('Recalled from catalog — set quantity & box');
+    }
+  }
 }
 
 /* ---------- duplicate-part notices + quick quantity add ---------- */
@@ -2940,6 +3076,7 @@ function resetDownstream(){
   el('micStatus').textContent = '';
   el('qtyInput').value = 1;
   hideDupNotices();
+  hideCatalogNote();
   renumber();
 }
 
@@ -3125,6 +3262,10 @@ el('btnSave').addEventListener('click', ()=>{
     const sameClassification = sameSet(existing.devices, current.devices) && sameSet(existing.subs, current.subs);
     if(!sameClassification){ existing.mismatch = true; }
     if(!existing.photo && current.photo){ existing.photo = current.photo; }
+    if(current.catalogMatched){
+      existing.catalogMatched = true;
+      if(!existing.catalogPhoto && current.catalogPhoto){ existing.catalogPhoto = current.catalogPhoto; }
+    }
     if(!existing.descPhoto && current.descPhoto){ existing.descPhoto = current.descPhoto; }
     if(!existing.descOriginal && current.descOriginal){
       existing.descOriginal = current.descOriginal;
@@ -3157,7 +3298,9 @@ el('btnSave').addEventListener('click', ()=>{
       orgQty: orgInlineRead(),
       time: nowStr,
       lastTime: nowStr,
-      mismatch: false
+      mismatch: false,
+      catalogMatched: !!current.catalogMatched,
+      catalogPhoto: current.catalogPhoto || null
     });
     clampOrgQty(entries[entries.length-1]);
     renderHistory();
@@ -3296,6 +3439,43 @@ el('fileImport').addEventListener('change', e=>{
   reader.readAsText(file);
 });
 
+/* ---------- parts catalog: load / status / auto-fill toggle ---------- */
+function updateCatalogStatus(){
+  const s = el('catalogStatus');
+  if(s){
+    s.textContent = catalogCount
+      ? (catalogCount + ' parts loaded' + (catalogMeta && catalogMeta.version ? ' · ' + catalogMeta.version : '') + '. Scanned parts auto-fill their name, photo & machine.')
+      : 'No catalog loaded yet — load the master catalog to auto-fill scanned parts.';
+  }
+  const t = el('catalogAutofillToggle');
+  if(t) t.checked = catalogAutofillOn();
+}
+el('btnImportCatalog').addEventListener('click', ()=>{ closeMenu(); el('fileCatalog').click(); });
+el('fileCatalog').addEventListener('change', e=>{
+  const file = e.target.files[0];
+  el('fileCatalog').value = '';
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = async ()=>{
+    let data;
+    try{ data = JSON.parse(reader.result); }
+    catch(err){ alert('This file is not a valid catalog (could not read it).'); return; }
+    if(!data || !data.parts || typeof data.parts !== 'object'){
+      alert('No catalog entries found. Expected a file with a "parts" object keyed by barcode.');
+      return;
+    }
+    try{ await idbSet(CATALOG_KEY, data); }catch(err){}
+    setCatalogData(data);
+    toast('Catalog loaded — ' + catalogCount + ' parts ✓');
+  };
+  reader.onerror = ()=> alert('Could not read the file.');
+  reader.readAsText(file);
+});
+el('catalogAutofillToggle').addEventListener('change', e=>{
+  try{ localStorage.setItem(AUTOFILL_KEY, e.target.checked ? 'on' : 'off'); }catch(err){}
+  toast(e.target.checked ? 'Catalog auto-fill on' : 'Catalog auto-fill off');
+});
+
 // fill in any fields an older backup might be missing
 // organizer stock is a subset of Qty — trim it if Qty was reduced by consumption
 function clampOrgQty(o){
@@ -3331,7 +3511,9 @@ function normalizeEntry(e){
     }),
     time: e.time || new Date().toLocaleString('en-GB', { hour12:true }),
     lastTime: e.lastTime || e.time || new Date().toLocaleString('en-GB', { hour12:true }),
-    mismatch: !!e.mismatch
+    mismatch: !!e.mismatch,
+    catalogMatched: !!e.catalogMatched,
+    catalogPhoto: e.catalogPhoto || null
   });
 }
 
@@ -3397,13 +3579,14 @@ function renderHistory(){
     const deviceLabel = escapeHtml(entryDeviceLabel(e));
     const qtyBadge = e.qty > 1 ? `<span class="qty">×${e.qty}</span>` : '';
     const mismatchNote = e.mismatch ? ' · ⚠ Different classification on a later scan' : '';
+    const catalogNote = e.catalogMatched ? ' · 📚 Catalog' : '';
     const thumbHtml = e.photo ? `<img class="thumb" src="${e.photo}" alt="">` : `<div class="badge ${confClass}"></div>`;
     const descHtml = e.desc ? `<div class="desc-note">📝 ${escapeHtml(e.desc)}</div>` : '';
     row.innerHTML = `
       ${thumbHtml}
       <div class="info">
         <div class="bc">${escapeHtml(e.barcode)} ${qtyBadge}</div>
-        <div class="meta">📦 Box ${e.box || 1} · ${deviceLabel} · Confidence: ${e.conf} · ${e.qty>1 ? 'Last scan ' + e.lastTime : e.time}${mismatchNote}</div>
+        <div class="meta">📦 Box ${e.box || 1} · ${deviceLabel} · Confidence: ${e.conf}${catalogNote} · ${e.qty>1 ? 'Last scan ' + e.lastTime : e.time}${mismatchNote}</div>
         ${descHtml}
       </div>
       <button class="edit" data-id="${e.id}" title="Edit">✎</button>
@@ -5344,6 +5527,28 @@ function updRunSearch(text){
   );
 
   if(matches.length === 0){
+    // Not in the inventory yet — but maybe it's a known catalog part.
+    const rec = catalogLookup(text);
+    if(rec){
+      const where = (rec.devices||[]).join(' + ') || '—';
+      const imgHtml = rec.image ? '<img src="' + rec.image + '" alt="" style="width:56px;height:56px;object-fit:contain;border-radius:8px;background:#fff;flex:none;">' : '';
+      showUpdAlert(
+        '<div style="display:flex;gap:10px;align-items:flex-start;text-align:left;">' + imgHtml +
+        '<div><b>📚 Found in catalog</b> — not in your inventory yet.<br>' +
+        '<span style="font-size:13px;">' + escapeHtml(rec.desc || '') + '</span><br>' +
+        '<span style="font-size:12px;opacity:.8;">' + escapeHtml(where) + '</span><br>' +
+        '<button class="btn btn-primary" id="updAddFromCat" style="margin-top:8px;">➕ Add this part</button>' +
+        '</div></div>', 'amber');
+      const btn = el('updAddFromCat');
+      if(btn) btn.addEventListener('click', ()=>{
+        const code = bcKey(text);
+        closeUpdateView();
+        navTo('entry');
+        setBarcode(code);
+        window.scrollTo(0,0);
+      });
+      return;
+    }
     showUpdAlert('⚠ <b>No match.</b><br>Nothing found for "' + escapeHtml(text) +
       '".<br><br>Add it first from <b>➕ Add</b> if it\'s a new part.', 'red');
     return;
@@ -5417,6 +5622,7 @@ el('brandLogoUpd').src = SWISSLOG_LOGO_HDR;
   await restoreEntries();
   await consRestore();
   await wdRestore();
+  await loadCatalog();
   try{ showLastTxn(await idbGet(LASTTXN_KEY)); }catch(_){ showLastTxn(null); }
   renderHistory();          // also refreshes the Home dashboard
   if(typeof renderWdList === 'function') renderWdList();
