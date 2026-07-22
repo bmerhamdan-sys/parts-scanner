@@ -749,9 +749,14 @@
     <div class="menu-section">
       <div class="menu-label">Parts catalog</div>
       <button class="menu-item" id="btnImportCatalog">📚 Load parts catalog (JSON)</button>
+      <button class="menu-item" id="btnExportCatalog">⬇ Export parts catalog (grown)</button>
       <label class="menu-item" style="display:flex; align-items:center; justify-content:space-between; gap:10px; cursor:pointer;">
         <span>✨ Auto-fill from catalog on scan</span>
         <input type="checkbox" id="catalogAutofillToggle" style="width:20px; height:20px;">
+      </label>
+      <label class="menu-item" style="display:flex; align-items:center; justify-content:space-between; gap:10px; cursor:pointer;">
+        <span>🧠 Learn new parts into catalog</span>
+        <input type="checkbox" id="catalogLearnToggle" style="width:20px; height:20px;">
       </label>
       <div class="menu-hint" id="catalogStatus">No catalog loaded yet.</div>
     </div>
@@ -851,7 +856,7 @@
       <div class="step-label"><div class="step-num">1</div><div class="step-title">What are you logging?</div></div>
       <div class="choice-grid">
         <div class="choice-btn" id="consTypePhila" data-type="PhilaBox">PhialBox<br><span style="font-size:11px;color:var(--text-faint)">1 barcode</span></div>
-        <div class="choice-btn" id="consTypeBox" data-type="BoxStation">PillBox<br><span style="font-size:11px;color:var(--text-faint)">1 barcode</span></div>
+        <div class="choice-btn" id="consTypeBox" data-type="PillBox">PillBox<br><span style="font-size:11px;color:var(--text-faint)">1 barcode</span></div>
       </div>
     </div>
 
@@ -1474,7 +1479,7 @@ function scanBeep(){
   }catch(e){}
 }
 
-const APP_VERSION = 'v14.4';
+const APP_VERSION = 'v14.6';
 document.getElementById('appVersion').textContent = APP_VERSION;
 
 /* ---------- slide-in menu ---------- */
@@ -1520,7 +1525,7 @@ document.getElementById('btnTheme').addEventListener('click', ()=>{
   applyTheme(currentTheme);
 });
 
-const SUB_COMPONENTS = ["Not sure","AutoBox","Autophial","Autophial+","Pickring","PillPicker","DrugNest"];
+const SUB_COMPONENTS = ["Not sure","AutoBox","BoxStation","Autophial","Autophial+","Pickring","PillPicker","DrugNest"];
 
 /* ============================================================
    PARTS CATALOG  (BoxPicker + PillPick master lookup)
@@ -1532,17 +1537,54 @@ const SUB_COMPONENTS = ["Not sure","AutoBox","Autophial","Autophial+","Pickring"
    ============================================================ */
 const CATALOG_KEY   = 'partsScanner.catalog.v1';
 const AUTOFILL_KEY  = 'partsScanner.catalogAutofill';
-let CATALOG = {};            // barcode -> { desc, devices, subs, image, ... }
+const CATLEARN_KEY  = 'partsScanner.catalogLearn';
+let catalogDoc = null;       // the full catalog object { ..., parts:{} }
+let CATALOG = {};            // barcode -> { desc, devices, subs, image, source, ... }
 let catalogCount = 0;
-let catalogMeta = null;      // { version, generatedAt, sources }
 
 function catalogAutofillOn(){
   try{ return localStorage.getItem(AUTOFILL_KEY) !== 'off'; }catch(e){ return true; }
 }
+function catalogLearnOn(){
+  try{ return localStorage.getItem(CATLEARN_KEY) !== 'off'; }catch(e){ return true; }
+}
+function blankCatalogDoc(){
+  return { app:'parts-scanner', type:'master-catalog', version:'user', generatedAt:new Date().toISOString(), sources:{}, count:0, parts:{} };
+}
 function setCatalogData(data){
-  CATALOG = (data && data.parts && typeof data.parts === 'object') ? data.parts : {};
+  catalogDoc = (data && data.parts && typeof data.parts === 'object') ? data : blankCatalogDoc();
+  if(!catalogDoc.parts || typeof catalogDoc.parts !== 'object') catalogDoc.parts = {};
+  CATALOG = catalogDoc.parts;
   catalogCount = Object.keys(CATALOG).length;
-  catalogMeta = data ? { version:data.version, generatedAt:data.generatedAt, sources:data.sources } : null;
+  if(typeof updateCatalogStatus === 'function') updateCatalogStatus();
+}
+async function persistCatalog(){
+  if(!catalogDoc) return false;
+  catalogDoc.count = Object.keys(catalogDoc.parts).length;
+  try{ return await idbSet(CATALOG_KEY, catalogDoc); }catch(e){ return false; }
+}
+/* Learn a newly classified part into the catalog so future scans recall it.
+   Never overwrites official (source!=='user') catalog records. */
+async function upsertCatalogFromEntry(e){
+  if(!catalogLearnOn() || !catalogDoc || !e || !e.barcode) return;
+  if(!Array.isArray(e.devices) || e.devices.length === 0) return;  // needs a classification
+  const key = bcKey(e.barcode);
+  const existing = CATALOG[key];
+  if(existing && existing.source && existing.source !== 'user') return; // keep official data authoritative
+  const rec = existing || {};
+  rec.desc = e.desc || rec.desc || '';
+  rec.devices = e.devices.slice();
+  const subs = Array.isArray(e.subs) ? e.subs.filter(s=> s && s !== 'Not sure') : [];
+  if(subs.length) rec.subs = subs; else delete rec.subs;
+  const img = entryImage(e);
+  if(img) rec.image = img;
+  rec.source = 'user';
+  rec.inInventory = true;
+  if(!rec.addedAt) rec.addedAt = new Date().toISOString();
+  const isNew = !existing;
+  CATALOG[key] = rec;
+  if(isNew) catalogCount = Object.keys(CATALOG).length;
+  await persistCatalog();
   if(typeof updateCatalogStatus === 'function') updateCatalogStatus();
 }
 async function loadCatalog(){
@@ -3229,6 +3271,7 @@ el('btnSave').addEventListener('click', ()=>{
       if(afterOrg < beforeOrg){
         toast('Organizer stock trimmed to ' + afterOrg + ' (Qty is now ' + e.qty + ')');
       }
+      upsertCatalogFromEntry(e);
     }
     cancelEdit();
     renderHistory();
@@ -3278,6 +3321,7 @@ el('btnSave').addEventListener('click', ()=>{
       existing.orgQty = existing.orgQty.map((n,i)=> (n||0) + addOrg[i]);
       clampOrgQty(existing);
     }
+    upsertCatalogFromEntry(existing);
     renderHistory();
     persist();
     toast(`Added to box ${existing.box || 1} — quantity is now ${existing.qty}`);
@@ -3304,6 +3348,7 @@ el('btnSave').addEventListener('click', ()=>{
       catalogPhoto: current.catalogPhoto || null
     });
     clampOrgQty(entries[entries.length-1]);
+    upsertCatalogFromEntry(entries[entries.length-1]);
     renderHistory();
     persist();
     saveLastBox();
@@ -3397,7 +3442,7 @@ el('fileImport').addEventListener('change', e=>{
     if(Array.isArray(data.consumables)){
       if(choice === 'replace'){
         consumables = data.consumables.filter(c=> c && Array.isArray(c.codes) && c.codes.length)
-          .map(c=>({ id:c.id||(Date.now()+Math.floor(Math.random()*1e5)), type:c.type||'PhilaBox',
+          .map(c=>({ id:c.id||(Date.now()+Math.floor(Math.random()*1e5)), type:consMigrateType(c.type),
                      codes:c.codes.map(bcKey), status:c.status==='bad'?'bad':'ok', reason:c.reason||'',
                      time:c.time||new Date().toLocaleString('en-GB',{hour12:true}) }));
       } else {
@@ -3405,7 +3450,7 @@ el('fileImport').addEventListener('change', e=>{
           if(!c || !Array.isArray(c.codes) || !c.codes.length) return;
           const exists = consumables.some(x=> x.codes.join('|') === c.codes.map(bcKey).join('|'));
           if(!exists){
-            consumables.push({ id:Date.now()+Math.floor(Math.random()*1e5), type:c.type||'PhilaBox',
+            consumables.push({ id:Date.now()+Math.floor(Math.random()*1e5), type:consMigrateType(c.type),
               codes:c.codes.map(bcKey), status:c.status==='bad'?'bad':'ok', reason:c.reason||'',
               time:c.time||new Date().toLocaleString('en-GB',{hour12:true}) });
           }
@@ -3445,12 +3490,16 @@ el('fileImport').addEventListener('change', e=>{
 function updateCatalogStatus(){
   const s = el('catalogStatus');
   if(s){
+    const learned = catalogDoc ? Object.values(catalogDoc.parts).filter(r=> r && r.source === 'user').length : 0;
+    const ver = catalogDoc && catalogDoc.version ? catalogDoc.version : '';
     s.textContent = catalogCount
-      ? (catalogCount + ' parts loaded' + (catalogMeta && catalogMeta.version ? ' · ' + catalogMeta.version : '') + '. Scanned parts auto-fill their name, photo & machine.')
+      ? (catalogCount + ' parts loaded' + (ver ? ' · ' + ver : '') + (learned ? ' · ' + learned + ' added here' : '') + '. Scanned parts auto-fill their name, photo & machine.')
       : 'No catalog loaded yet — load the master catalog to auto-fill scanned parts.';
   }
   const t = el('catalogAutofillToggle');
   if(t) t.checked = catalogAutofillOn();
+  const lt = el('catalogLearnToggle');
+  if(lt) lt.checked = catalogLearnOn();
 }
 el('btnImportCatalog').addEventListener('click', ()=>{ closeMenu(); el('fileCatalog').click(); });
 el('fileCatalog').addEventListener('change', e=>{
@@ -3478,6 +3527,23 @@ el('fileCatalog').addEventListener('change', e=>{
 el('catalogAutofillToggle').addEventListener('change', e=>{
   try{ localStorage.setItem(AUTOFILL_KEY, e.target.checked ? 'on' : 'off'); }catch(err){}
   toast(e.target.checked ? 'Catalog auto-fill on' : 'Catalog auto-fill off');
+});
+el('catalogLearnToggle').addEventListener('change', e=>{
+  try{ localStorage.setItem(CATLEARN_KEY, e.target.checked ? 'on' : 'off'); }catch(err){}
+  toast(e.target.checked ? 'New parts will be added to the catalog' : 'Catalog learning off');
+});
+el('btnExportCatalog').addEventListener('click', ()=>{
+  closeMenu();
+  if(!catalogDoc || !catalogCount){ toast('No catalog to export yet'); return; }
+  catalogDoc.count = Object.keys(catalogDoc.parts).length;
+  catalogDoc.exportedAt = new Date().toISOString();
+  const blob = new Blob([JSON.stringify(catalogDoc)], { type:'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'swisslog_master_catalog.json';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(()=> URL.revokeObjectURL(url), 3000);
+  toast('Catalog exported — ' + catalogDoc.count + ' parts ✓');
 });
 
 // fill in any fields an older backup might be missing
@@ -3693,6 +3759,7 @@ function exportExcel(){
     'BoxPicker': e.devices.includes('BoxPicker') ? 'Yes' : '',
     'PillPick': e.devices.includes('PillPick') ? 'Yes' : '',
     'AutoBox': e.subs.includes('AutoBox') ? 'Yes' : '',
+    'BoxStation': e.subs.includes('BoxStation') ? 'Yes' : '',
     'Autophial': e.subs.includes('Autophial') ? 'Yes' : '',
     'Autophial+': e.subs.includes('Autophial+') ? 'Yes' : '',
     'Pickring': e.subs.includes('Pickring') ? 'Yes' : '',
@@ -3701,7 +3768,7 @@ function exportExcel(){
     'Not sure': e.subs.includes('Not sure') ? 'Yes' : ''
   }));
   const stamp = new Date().toISOString().slice(0,10);
-  const widths = [4,10,10,24,45,6,6,9,11,11,8,32,11,22,22,20,45,14,20,11,10,9,10,11,9,11,10,9];
+  const widths = [4,10,10,24,45,6,6,9,11,11,8,32,11,22,22,20,45,14,20,11,10,9,11,10,11,9,11,10,9];
   const subtitle = (getTech() ? 'Prepared by: ' + getTech() + '   ' : '') +
                    'Exported: ' + new Date().toLocaleString('en-GB');
 
@@ -3930,6 +3997,7 @@ function exportWord(){
     { key:'BoxPicker',  in:e=> e.devices.includes('BoxPicker') },
     { key:'PillPick',   in:e=> e.devices.includes('PillPick') },
     { key:'AutoBox',    in:e=> e.subs.includes('AutoBox') },
+    { key:'BoxStation', in:e=> e.subs.includes('BoxStation') },
     { key:'Autophial',  in:e=> e.subs.includes('Autophial') },
     { key:'Autophial+', in:e=> e.subs.includes('Autophial+') },
     { key:'Pickring',   in:e=> e.subs.includes('Pickring') },
@@ -4163,12 +4231,13 @@ function exportWord(){
 function consBeep(){ scanBeep(); }   // alias → global scanBeep
 const CONS_KEY = 'partsScanner.consumables.v1';
 let consumables = [];          // {id, type, codes:[], status:'ok'|'bad', reason, time}
-// Stored type keys stay 'PhilaBox' / 'BoxStation' forever so old backups keep working.
-// Only what the user SEES is renamed.
-const CONS_LABEL = { PhilaBox: 'PhialBox', BoxStation: 'PillBox' };
+// User-facing name is "PillBox"; the stored key is 'PillBox' too.
+// Legacy backups used 'BoxStation' for this same box type — migrated to 'PillBox' on load/import.
+const CONS_LABEL = { PhilaBox: 'PhialBox', PillBox: 'PillBox', BoxStation: 'PillBox' };
 const consLabel = t => CONS_LABEL[t] || t;
+const consMigrateType = t => (t === 'BoxStation' ? 'PillBox' : (t || 'PhilaBox'));
 
-let consType = null;           // 'PhilaBox' | 'BoxStation'
+let consType = null;           // 'PhilaBox' | 'PillBox'
 let consScanTarget = 0;        // which barcode we're scanning (0 or 1)
 let consCodesBuf = [];         // codes collected in the current session
 let consCamRunning = false;
@@ -4216,7 +4285,7 @@ async function consRestore(){
       consumables = arr.filter(c=> c && Array.isArray(c.codes) && c.codes.length)
         .map(c=>({
           id: c.id || (Date.now()+Math.floor(Math.random()*1e5)),
-          type: c.type || 'PhilaBox',
+          type: consMigrateType(c.type),
           codes: c.codes.map(x=> bcKey(x)),
           status: c.status === 'bad' ? 'bad' : 'ok',
           problem: c.problem || (c.status==='bad' ? 'duplicate' : ''),
@@ -4267,7 +4336,7 @@ function startConsType(type){
   consLastRead = { code:null, t:0 };
   el('consStickerAsk').classList.remove('show');
   el('consTypePhila').classList.toggle('selected', type === 'PhilaBox');
-  el('consTypeBox').classList.toggle('selected', type === 'BoxStation');
+  el('consTypeBox').classList.toggle('selected', type === 'PillBox');
   el('consScanCard').style.display = 'block';
   el('consScanCard').classList.remove('dim');
   hideConsAlert();
@@ -4462,7 +4531,7 @@ function renderConsList(){
   rows.forEach(c=>{
     const div = document.createElement('div');
     div.className = 'cons-item' + (c.status==='bad'?' bad':'');
-    const codeText = c.type==='BoxStation'
+    const codeText = c.type==='PillBox'
       ? c.codes.map(x=>escapeHtml(x)).join(' = ')
       : escapeHtml(c.codes[0]||'');
     div.innerHTML = `
@@ -4488,7 +4557,7 @@ function startConsRepair(id){
   if(!box) return;
   consType = box.type; consRepairId = id; consScanTarget = 0; consCodesBuf = [];
   el('consTypePhila').classList.toggle('selected', box.type==='PhilaBox');
-  el('consTypeBox').classList.toggle('selected', box.type==='BoxStation');
+  el('consTypeBox').classList.toggle('selected', box.type==='PillBox');
   el('consScanCard').style.display='block';
   el('consScanCard').classList.remove('dim');
   hideConsAlert();
@@ -4503,7 +4572,7 @@ function startConsRepair(id){
 el('btnOpenConsumables').addEventListener('click', ()=> navTo('cons'));
 el('consBack').addEventListener('click', navBack);
 el('consTypePhila').addEventListener('click', ()=> startConsType('PhilaBox'));
-el('consTypeBox').addEventListener('click', ()=> startConsType('BoxStation'));
+el('consTypeBox').addEventListener('click', ()=> startConsType('PillBox'));
 el('consStartCam').addEventListener('click', startConsCam);
 el('consStopCam').addEventListener('click', stopConsCam);
 el('consStickerOk').addEventListener('click', ()=> validateAndSaveCons(false));
@@ -4538,7 +4607,7 @@ el('repBoxExcel').addEventListener('click', ()=>{ closeMenu(); exportConsExcel()
 function consGroups(){
   return {
     phila: consumables.filter(c=> c.type==='PhilaBox'),
-    box:   consumables.filter(c=> c.type==='BoxStation'),
+    box:   consumables.filter(c=> c.type==='PillBox'),
     bad:   consumables.filter(c=> c.status==='bad'),
     ok:    consumables.filter(c=> c.status==='ok'),
     dupProblem:   consumables.filter(c=> c.status==='bad' && c.problem==='duplicate'),
@@ -5016,7 +5085,7 @@ function refreshHome(){
   // Box Inventory (PhialBox / PillBox), healthy vs needs-fixing
   const consWrap = el('consBoxChips');
   if(typeof consumables !== 'undefined'){
-    const byType = { PhilaBox: { ok:0, bad:0 }, BoxStation: { ok:0, bad:0 } };
+    const byType = { PhilaBox: { ok:0, bad:0 }, PillBox: { ok:0, bad:0 } };
     consumables.forEach(c=>{
       if(!byType[c.type]) return;
       byType[c.type][c.status === 'bad' ? 'bad' : 'ok']++;
