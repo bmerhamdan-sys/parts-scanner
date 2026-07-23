@@ -741,18 +741,7 @@
     <div class="menu-section">
       <div class="menu-label">Data</div>
       <button class="menu-item" id="btnOpenReports">📑 Reports</button>
-      <button class="menu-item" id="btnExportData">⬇ Backup inventory (JSON)</button>
-      <button class="menu-item" id="btnImportData">⬆ Import / merge backup</button>
-    </div>
-
-    <div class="menu-section">
-      <div class="menu-label">Delete data</div>
-      <button class="menu-item danger" id="btnClearStock">🗑 Delete stock list (spare parts)</button>
-      <button class="menu-item danger" id="btnClearCatalog">🗑 Delete classified parts (catalog)</button>
-      <button class="menu-item danger" id="btnClearBoxes">🗑 Delete Box Inventory</button>
-      <button class="menu-item danger" id="btnClearWithdrawals">🗑 Delete withdrawal log</button>
-      <button class="menu-item danger" id="btnClear">🗑 Delete everything</button>
-      <div class="menu-hint">Each button deletes only what it names. Back up first — deletions cannot be undone.</div>
+      <button class="menu-item" id="btnOpenData">💾 Backup, restore &amp; delete</button>
     </div>
 
     <div class="menu-section">
@@ -1248,6 +1237,51 @@
     </div>
   </div>
 
+  <!-- ============ DATA: BACKUP / RESTORE / DELETE ============ -->
+  <div class="cons-view" id="dataView">
+    <header class="top cons-top brand-head">
+      <div class="brand-row3">
+        <button class="theme-btn nav-back" id="dataBack" title="Back" aria-label="Back">←</button>
+        <img class="brand-logo" id="brandLogoData" alt="Swisslog Healthcare">
+        <button class="theme-btn nav-menu" id="dataMenuBtn" title="Menu" aria-label="Menu">☰</button>
+      </div>
+      <div class="brand-line2"><div class="brand-sub">Backup, restore &amp; delete</div></div>
+    </header>
+
+    <div class="card">
+      <div class="hist-head"><div class="t">What you have now</div></div>
+      <div id="dataSummary" style="font-size:13px; line-height:1.9;"></div>
+    </div>
+
+    <div class="card">
+      <div class="hist-head"><div class="t">💾 Backup</div></div>
+      <div style="font-size:12px; color:var(--text-dim); margin-bottom:10px;">
+        Saves everything — spare parts, Parts Organizer stock, Box Inventory and the withdrawal log — into one JSON file.
+      </div>
+      <button class="btn btn-primary" id="dataExport" style="width:100%;">⬇ Download backup (JSON)</button>
+    </div>
+
+    <div class="card">
+      <div class="hist-head"><div class="t">♻ Restore</div></div>
+      <div style="font-size:12px; color:var(--text-dim); margin-bottom:10px;">
+        Loads a backup file. You'll be asked whether to <b>merge</b> it with what's here or <b>replace</b> everything.
+      </div>
+      <button class="btn btn-primary" id="dataImport" style="width:100%;">⬆ Restore from backup</button>
+    </div>
+
+    <div class="card">
+      <div class="hist-head"><div class="t">🗑 Delete</div></div>
+      <div class="dup-note" style="border-color:var(--red); background:var(--red-tint); margin-bottom:12px;">
+        <b>Download a backup first.</b> Deletions cannot be undone. Each button below removes only what it names.
+      </div>
+      <button class="btn btn-ghost danger" id="dataClearStock" style="width:100%; margin-bottom:8px;">🗑 Delete stock list (spare parts)</button>
+      <button class="btn btn-ghost danger" id="dataClearCatalog" style="width:100%; margin-bottom:8px;">🗑 Delete classified parts (catalog)</button>
+      <button class="btn btn-ghost danger" id="dataClearBoxes" style="width:100%; margin-bottom:8px;">🗑 Delete Box Inventory</button>
+      <button class="btn btn-ghost danger" id="dataClearWithdrawals" style="width:100%; margin-bottom:8px;">🗑 Delete withdrawal log</button>
+      <button class="btn btn-ghost danger" id="dataClearAll" style="width:100%;">🗑 Delete everything</button>
+    </div>
+  </div>
+
   <!-- ============ PARTS WITHDRAWAL ============ -->
   <div class="cons-view" id="wdView">
     <header class="top cons-top brand-head">
@@ -1488,7 +1522,7 @@ function scanBeep(){
   }catch(e){}
 }
 
-const APP_VERSION = 'v14.7';
+const APP_VERSION = 'v14.8';
 document.getElementById('appVersion').textContent = APP_VERSION;
 
 /* ---------- slide-in menu ---------- */
@@ -3374,7 +3408,7 @@ el('btnSave').addEventListener('click', ()=>{
 });
 
 /* ---------- backup: export / import the whole inventory as JSON ---------- */
-el('btnExportData').addEventListener('click', ()=>{
+el('dataExport').addEventListener('click', ()=>{
   closeMenu();
   if(entries.length === 0){ toast('Nothing to back up yet'); return; }
   const payload = {
@@ -3399,7 +3433,7 @@ el('btnExportData').addEventListener('click', ()=>{
   toast('Backup saved ✓');
 });
 
-el('btnImportData').addEventListener('click', ()=>{ closeMenu(); el('fileImport').click(); });
+el('dataImport').addEventListener('click', ()=>{ closeMenu(); el('fileImport').click(); });
 
 el('fileImport').addEventListener('change', e=>{
   const file = e.target.files[0];
@@ -3489,6 +3523,7 @@ el('fileImport').addEventListener('change', e=>{
     renderHistory();
     const saved = await persist();
     if(saved) toast(choice === 'merge' ? 'Merged ✓' : 'Imported ✓');
+    if(typeof refreshDataSummary === 'function') refreshDataSummary();
     if(syncCatalogPhotos() > 0){ renderHistory(); try{ await persist(); }catch(_){}}
   };
   reader.onerror = ()=> alert('Could not read the file.');
@@ -3706,7 +3741,7 @@ function renderHistory(){
   });
 }
 
-el('btnClearStock').addEventListener('click', ()=>{
+el('dataClearStock').addEventListener('click', ()=>{
   closeMenu();
   if(!entries.length){ toast('The stock list is already empty'); return; }
   if(confirm('Delete the STOCK LIST — all ' + entries.length + ' spare parts, their quantities, boxes and photos?\n\n' +
@@ -3718,10 +3753,11 @@ el('btnClearStock').addEventListener('click', ()=>{
     el('boxInput').value = 1;
     try{ localStorage.removeItem(BOX_KEY); }catch(e){}
     toast('Stock list deleted — storage box reset to 1');
+    refreshDataSummary();
   }
 });
 
-el('btnClearCatalog').addEventListener('click', ()=>{
+el('dataClearCatalog').addEventListener('click', ()=>{
   closeMenu();
   if(!catalogCount){ toast('No catalog loaded'); return; }
   const learned = catalogDoc ? Object.values(catalogDoc.parts).filter(r=> r && r.source === 'user').length : 0;
@@ -3738,16 +3774,18 @@ el('btnClearCatalog').addEventListener('click', ()=>{
     setCatalogData(catalogDoc);
     persistCatalog();
     toast('Deleted ' + learned + ' parts you added');
+    refreshDataSummary();
   } else if(choice === '2'){
     if(!confirm('Delete the ENTIRE parts catalog (' + catalogCount + ' parts)?\n\n' +
                 'Your stock list is kept, but scanned parts will stop auto-filling until you load a catalog again.')) return;
     setCatalogData(null);
     idbSet(CATALOG_KEY, catalogDoc);
     toast('Catalog deleted');
+    refreshDataSummary();
   }
 });
 
-el('btnClearBoxes').addEventListener('click', ()=>{
+el('dataClearBoxes').addEventListener('click', ()=>{
   closeMenu();
   if(!consumables.length){ toast('Box Inventory is already empty'); return; }
   if(confirm('Delete the BOX INVENTORY — all ' + consumables.length + ' scanned PhialBox / PillBox records?\n\n' +
@@ -3756,10 +3794,11 @@ el('btnClearBoxes').addEventListener('click', ()=>{
     consPersist();
     if(typeof renderConsList === 'function') renderConsList();
     toast('Box Inventory deleted');
+    refreshDataSummary();
   }
 });
 
-el('btnClearWithdrawals').addEventListener('click', ()=>{
+el('dataClearWithdrawals').addEventListener('click', ()=>{
   closeMenu();
   if(!withdrawals.length){ toast('The withdrawal log is already empty'); return; }
   if(confirm('Delete the WITHDRAWAL LOG — all ' + withdrawals.length + ' records?\n\n' +
@@ -3768,10 +3807,11 @@ el('btnClearWithdrawals').addEventListener('click', ()=>{
     wdPersist();
     if(typeof renderWdList === 'function') renderWdList();
     toast('Withdrawal log deleted');
+    refreshDataSummary();
   }
 });
 
-el('btnClear').addEventListener('click', ()=>{
+el('dataClearAll').addEventListener('click', ()=>{
   closeMenu();
   const hasAnything = entries.length > 0 || consumables.length > 0 || withdrawals.length > 0;
   if(!hasAnything) return;
@@ -3794,6 +3834,7 @@ el('btnClear').addEventListener('click', ()=>{
     el('boxInput').value = 1;
     try{ localStorage.removeItem(BOX_KEY); }catch(e){}
     toast('Cleared — storage box reset to 1');
+    refreshDataSummary();
   }
 });
 
@@ -5079,6 +5120,7 @@ function hideAllOverlays(){
   el('wdView').classList.remove('open');
   el('reportsView').classList.remove('open');
   el('updateView').classList.remove('open');
+  el('dataView').classList.remove('open');
 }
 
 const VIEW_OPENERS = {
@@ -5088,7 +5130,8 @@ const VIEW_OPENERS = {
   org: openOrganizer,
   wd: openWithdraw,
   reports: openReports,
-  update: openUpdateParts
+  update: openUpdateParts,
+  data: openDataView
 };
 
 function navTo(id){
@@ -5575,6 +5618,34 @@ function openReports(){
   window.scrollTo(0,0);
 }
 function closeReports(){ el('reportsView').classList.remove('open'); }
+
+/* ---------- Data page: backup / restore / delete ---------- */
+function refreshDataSummary(){
+  const box = el('dataSummary');
+  if(!box) return;
+  const totalQty = entries.reduce((a,e)=> a + (e.qty || 0), 0);
+  const zeroQty  = entries.filter(e=> (e.qty || 0) === 0).length;
+  const learned  = catalogDoc ? Object.values(catalogDoc.parts).filter(r=> r && r.source === 'user').length : 0;
+  const row = (icon, label, val)=> '<div style="display:flex; justify-content:space-between; gap:12px;">' +
+        '<span>' + icon + ' ' + label + '</span><b>' + val + '</b></div>';
+  box.innerHTML =
+    row('🔧','Spare parts (items)', entries.length) +
+    row('🔢','Total quantity', totalQty) +
+    (zeroQty ? row('⚠️','Out of stock (qty 0)', zeroQty) : '') +
+    row('📚','Catalog parts', catalogCount + (learned ? ' (' + learned + ' added here)' : '')) +
+    row('📦','Box Inventory records', consumables.length) +
+    row('🧾','Withdrawal records', withdrawals.length);
+}
+function openDataView(){
+  closeMenu();
+  refreshDataSummary();
+  el('dataView').classList.add('open');
+  window.scrollTo(0,0);
+}
+el('btnOpenData').addEventListener('click', ()=> navTo('data'));
+el('dataBack').addEventListener('click', navBack);
+el('dataMenuBtn').addEventListener('click', openMenu);
+el('brandLogoData').src = SWISSLOG_LOGO_HDR;
 
 el('btnOpenReports').addEventListener('click', ()=> navTo('reports'));
 el('reportsBack').addEventListener('click', navBack);
