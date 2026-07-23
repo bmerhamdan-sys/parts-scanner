@@ -745,21 +745,6 @@
     </div>
 
     <div class="menu-section">
-      <div class="menu-label">Parts catalog</div>
-      <button class="menu-item" id="btnImportCatalog">📚 Load parts catalog (JSON)</button>
-      <button class="menu-item" id="btnExportCatalog">⬇ Export parts catalog (grown)</button>
-      <label class="menu-item" style="display:flex; align-items:center; justify-content:space-between; gap:10px; cursor:pointer;">
-        <span>✨ Auto-fill from catalog on scan</span>
-        <input type="checkbox" id="catalogAutofillToggle" style="width:20px; height:20px;">
-      </label>
-      <label class="menu-item" style="display:flex; align-items:center; justify-content:space-between; gap:10px; cursor:pointer;">
-        <span>🧠 Learn new parts into catalog</span>
-        <input type="checkbox" id="catalogLearnToggle" style="width:20px; height:20px;">
-      </label>
-      <div class="menu-hint" id="catalogStatus">No catalog loaded yet.</div>
-    </div>
-
-    <div class="menu-section">
       <div class="menu-label">Modules</div>
       <button class="menu-item" id="btnHome">🏠 Home</button>
       <button class="menu-item" id="btnAddParts">➕ Add</button>
@@ -1270,6 +1255,26 @@
     </div>
 
     <div class="card">
+      <div class="hist-head"><div class="t">📚 Parts catalog</div></div>
+      <div style="font-size:12px; color:var(--text-dim); margin-bottom:12px;">
+        The catalog fills in a part's name, photo, machine and component the moment you scan it — you only set the quantity and box.
+      </div>
+      <button class="btn btn-primary" id="btnImportCatalog" style="width:100%; margin-bottom:8px;">📚 Load parts catalog (JSON)</button>
+      <button class="btn btn-ghost" id="btnExportCatalog" style="width:100%;">⬇ Export catalog (with parts you added)</button>
+
+      <label style="display:flex; align-items:center; justify-content:space-between; gap:10px; cursor:pointer; padding:12px 2px 4px;">
+        <span style="font-size:14px;">✨ Auto-fill from catalog on scan</span>
+        <input type="checkbox" id="catalogAutofillToggle" style="width:20px; height:20px; flex:none;">
+      </label>
+      <label style="display:flex; align-items:center; justify-content:space-between; gap:10px; cursor:pointer; padding:4px 2px;">
+        <span style="font-size:14px;">🧠 Learn new parts into catalog</span>
+        <input type="checkbox" id="catalogLearnToggle" style="width:20px; height:20px; flex:none;">
+      </label>
+
+      <div style="font-size:12px; color:var(--text-dim); margin-top:10px;" id="catalogStatus">No catalog loaded yet.</div>
+    </div>
+
+    <div class="card">
       <div class="hist-head"><div class="t">🗑 Delete</div></div>
       <div class="dup-note" style="border-color:var(--red); background:var(--red-tint); margin-bottom:12px;">
         <b>Download a backup first.</b> Deletions cannot be undone. Each button below removes only what it names.
@@ -1522,7 +1527,7 @@ function scanBeep(){
   }catch(e){}
 }
 
-const APP_VERSION = 'v14.8';
+const APP_VERSION = 'v14.9';
 document.getElementById('appVersion').textContent = APP_VERSION;
 
 /* ---------- slide-in menu ---------- */
@@ -3564,6 +3569,7 @@ el('fileCatalog').addEventListener('change', e=>{
     const synced = syncCatalogPhotos();
     if(synced > 0){ renderHistory(); try{ await persist(); }catch(_){}}
     toast('Catalog loaded — ' + catalogCount + ' parts' + (synced ? ' · ' + synced + ' matched in inventory' : '') + ' ✓');
+    if(typeof refreshDataSummary === 'function') refreshDataSummary();
   };
   reader.onerror = ()=> alert('Could not read the file.');
   reader.readAsText(file);
