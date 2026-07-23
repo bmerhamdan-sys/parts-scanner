@@ -743,7 +743,16 @@
       <button class="menu-item" id="btnOpenReports">📑 Reports</button>
       <button class="menu-item" id="btnExportData">⬇ Backup inventory (JSON)</button>
       <button class="menu-item" id="btnImportData">⬆ Import / merge backup</button>
-      <button class="menu-item danger" id="btnClear">🗑 Clear all data</button>
+    </div>
+
+    <div class="menu-section">
+      <div class="menu-label">Delete data</div>
+      <button class="menu-item danger" id="btnClearStock">🗑 Delete stock list (spare parts)</button>
+      <button class="menu-item danger" id="btnClearCatalog">🗑 Delete classified parts (catalog)</button>
+      <button class="menu-item danger" id="btnClearBoxes">🗑 Delete Box Inventory</button>
+      <button class="menu-item danger" id="btnClearWithdrawals">🗑 Delete withdrawal log</button>
+      <button class="menu-item danger" id="btnClear">🗑 Delete everything</button>
+      <div class="menu-hint">Each button deletes only what it names. Back up first — deletions cannot be undone.</div>
     </div>
 
     <div class="menu-section">
@@ -1479,7 +1488,7 @@ function scanBeep(){
   }catch(e){}
 }
 
-const APP_VERSION = 'v14.6';
+const APP_VERSION = 'v14.7';
 document.getElementById('appVersion').textContent = APP_VERSION;
 
 /* ---------- slide-in menu ---------- */
@@ -3697,7 +3706,73 @@ function renderHistory(){
   });
 }
 
+el('btnClearStock').addEventListener('click', ()=>{
+  closeMenu();
+  if(!entries.length){ toast('The stock list is already empty'); return; }
+  if(confirm('Delete the STOCK LIST — all ' + entries.length + ' spare parts, their quantities, boxes and photos?\n\n' +
+             'The parts catalog, Box Inventory and withdrawal log are kept.\n\nThis cannot be undone.')){
+    cancelEdit();
+    entries = [];
+    renderHistory();
+    persist();
+    el('boxInput').value = 1;
+    try{ localStorage.removeItem(BOX_KEY); }catch(e){}
+    toast('Stock list deleted — storage box reset to 1');
+  }
+});
+
+el('btnClearCatalog').addEventListener('click', ()=>{
+  closeMenu();
+  if(!catalogCount){ toast('No catalog loaded'); return; }
+  const learned = catalogDoc ? Object.values(catalogDoc.parts).filter(r=> r && r.source === 'user').length : 0;
+  const choice = prompt(
+    'Delete classified parts (the catalog).\n\n' +
+    'Type 1 = delete ONLY the ' + learned + ' parts you classified here (keeps the official catalog)\n' +
+    'Type 2 = delete the WHOLE catalog, all ' + catalogCount + ' parts\n\n' +
+    'Leave empty to cancel.');
+  if(choice === '1'){
+    if(!learned){ toast('No parts were added here'); return; }
+    Object.keys(catalogDoc.parts).forEach(k=>{
+      if(catalogDoc.parts[k] && catalogDoc.parts[k].source === 'user') delete catalogDoc.parts[k];
+    });
+    setCatalogData(catalogDoc);
+    persistCatalog();
+    toast('Deleted ' + learned + ' parts you added');
+  } else if(choice === '2'){
+    if(!confirm('Delete the ENTIRE parts catalog (' + catalogCount + ' parts)?\n\n' +
+                'Your stock list is kept, but scanned parts will stop auto-filling until you load a catalog again.')) return;
+    setCatalogData(null);
+    idbSet(CATALOG_KEY, catalogDoc);
+    toast('Catalog deleted');
+  }
+});
+
+el('btnClearBoxes').addEventListener('click', ()=>{
+  closeMenu();
+  if(!consumables.length){ toast('Box Inventory is already empty'); return; }
+  if(confirm('Delete the BOX INVENTORY — all ' + consumables.length + ' scanned PhialBox / PillBox records?\n\n' +
+             'Spare parts and the catalog are kept.\n\nThis cannot be undone.')){
+    consumables = [];
+    consPersist();
+    if(typeof renderConsList === 'function') renderConsList();
+    toast('Box Inventory deleted');
+  }
+});
+
+el('btnClearWithdrawals').addEventListener('click', ()=>{
+  closeMenu();
+  if(!withdrawals.length){ toast('The withdrawal log is already empty'); return; }
+  if(confirm('Delete the WITHDRAWAL LOG — all ' + withdrawals.length + ' records?\n\n' +
+             'Part quantities already withdrawn are NOT restored.\n\nThis cannot be undone.')){
+    withdrawals = [];
+    wdPersist();
+    if(typeof renderWdList === 'function') renderWdList();
+    toast('Withdrawal log deleted');
+  }
+});
+
 el('btnClear').addEventListener('click', ()=>{
+  closeMenu();
   const hasAnything = entries.length > 0 || consumables.length > 0 || withdrawals.length > 0;
   if(!hasAnything) return;
   if(confirm(
@@ -5608,6 +5683,100 @@ function updShowPicker(matches, query){
 
 // Accepts a scanned/typed barcode OR a part-name search — same matching the
 // main parts list already uses (barcode, description, or device/where-used).
+/* ---------- catalog-only results (parts not in the inventory yet) ---------- */
+function catalogSearch(text, limit){
+  const q = String(text || '').trim().toLowerCase();
+  if(!q || !catalogCount) return [];
+  const out = [];
+  for(const code in CATALOG){
+    const r = CATALOG[code];
+    if(!r) continue;
+    const hay = code.toLowerCase() + ' ' + String(r.desc||'').toLowerCase() + ' ' +
+                (r.devices||[]).join(' ').toLowerCase() + ' ' + (r.subs||[]).join(' ').toLowerCase();
+    if(hay.includes(q)) out.push({ code, rec:r });
+    if(out.length >= (limit || 25)) break;
+  }
+  // exact barcode first, then shortest description (most specific)
+  out.sort((a,b)=> (bcKey(a.code)===bcKey(q) ? -1 : bcKey(b.code)===bcKey(q) ? 1 : 0));
+  return out;
+}
+
+/* Full spec sheet for a catalog part that isn't in the inventory. */
+function updShowCatalogPart(code, rec){
+  const row = (label, val)=> val ? '<div style="display:flex;gap:8px;margin-top:4px;"><span style="opacity:.65;min-width:92px;">'+label+'</span><span style="font-weight:600;">'+escapeHtml(val)+'</span></div>' : '';
+  const where = (rec.devices||[]).join(' + ');
+  const mods  = (rec.subs||[]).join(', ');
+  const img = rec.image
+    ? '<img src="'+rec.image+'" class="upd-photo-big" alt="">'
+    : '<div class="upd-photo-big" style="display:flex;align-items:center;justify-content:center;height:120px;color:var(--text-faint);font-size:12px;">No photo</div>';
+  showUpdAlert(
+    '<div style="text-align:left;">' +
+      '<div style="font-weight:800;margin-bottom:6px;">📚 Found in the catalog — not in your stock yet</div>' +
+      img +
+      '<div style="font-size:14px;font-weight:700;margin-top:8px;">' + escapeHtml(rec.desc || '(no description)') + '</div>' +
+      '<div style="font-size:13px;margin-top:6px;">' +
+        row('Code', code) +
+        row('Machine', where) +
+        row('Component', mods) +
+        row('Ref no.', rec.ref != null ? String(rec.ref) : '') +
+        row('Part type', rec.type || '') +
+        row('Option', rec.category && rec.category !== 'Standard' ? rec.category : '') +
+        row('Source', rec.source === 'user' ? 'Added by you' : (rec.source === 'db-only' ? 'From your data' : 'Official catalog')) +
+        row('Italian', rec.descOriginal || '') +
+      '</div>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">' +
+        '<button class="btn btn-primary" id="updAddFromCat">➕ Add &amp; count now</button>' +
+        '<button class="btn btn-ghost" id="updAddZero">📋 Add to stock as 0</button>' +
+      '</div>' +
+      '<div style="font-size:12px;opacity:.75;margin-top:8px;">“Add to stock as 0” records the part with quantity 0 so it shows up in your stock list and reports as out of stock.</div>' +
+    '</div>', 'amber');
+
+  const goAdd = el('updAddFromCat');
+  if(goAdd) goAdd.addEventListener('click', ()=>{
+    closeUpdateView();
+    navTo('entry');
+    setBarcode(bcKey(code));
+    window.scrollTo(0,0);
+  });
+  const zero = el('updAddZero');
+  if(zero) zero.addEventListener('click', ()=> addCatalogPartAsZero(code, rec));
+}
+
+/* Create an inventory entry with quantity 0 straight from a catalog record. */
+function addCatalogPartAsZero(code, rec){
+  const key = bcKey(code);
+  const already = entries.find(e=> bcKey(e.barcode) === key);
+  if(already){ updShowOne(already); toast('Already in your stock'); return; }
+  const nowStr = new Date().toLocaleString('en-GB', { hour12:true });
+  const subs = Array.isArray(rec.subs) ? rec.subs.filter(s=> SUB_COMPONENTS.includes(s)) : [];
+  const e = clampOrgQty({
+    id: Date.now(),
+    barcode: key,
+    devices: Array.isArray(rec.devices) ? rec.devices.slice() : [],
+    subs: subs,
+    conf: 'High',
+    photo: rec.image || null,
+    desc: rec.desc || '',
+    descOriginal: rec.descOriginal || '',
+    descLang: rec.descOriginal ? 'Italian' : '',
+    descPhoto: null,
+    qty: 0,
+    box: getBox(),
+    minStock: 1,
+    orgQty: [0,0],
+    time: nowStr,
+    lastTime: nowStr,
+    mismatch: false,
+    catalogMatched: true,
+    catalogPhoto: rec.image || null
+  });
+  entries.push(e);
+  renderHistory();
+  persist();
+  toast('Added with quantity 0 — out of stock');
+  updShowOne(e);
+}
+
 function updRunSearch(text){
   text = String(text || '').trim();
   if(!text) return;
@@ -5627,34 +5796,38 @@ function updRunSearch(text){
   );
 
   if(matches.length === 0){
-    // Not in the inventory yet — but maybe it's a known catalog part.
-    const rec = catalogLookup(text);
-    if(rec){
-      const where = (rec.devices||[]).join(' + ') || '—';
-      const imgHtml = rec.image ? '<img src="' + rec.image + '" alt="" style="width:56px;height:56px;object-fit:contain;border-radius:8px;background:#fff;flex:none;">' : '';
-      showUpdAlert(
-        '<div style="display:flex;gap:10px;align-items:flex-start;text-align:left;">' + imgHtml +
-        '<div><b>📚 Found in catalog</b> — not in your inventory yet.<br>' +
-        '<span style="font-size:13px;">' + escapeHtml(rec.desc || '') + '</span><br>' +
-        '<span style="font-size:12px;opacity:.8;">' + escapeHtml(where) + '</span><br>' +
-        '<button class="btn btn-primary" id="updAddFromCat" style="margin-top:8px;">➕ Add this part</button>' +
-        '</div></div>', 'amber');
-      const btn = el('updAddFromCat');
-      if(btn) btn.addEventListener('click', ()=>{
-        const code = bcKey(text);
-        closeUpdateView();
-        navTo('entry');
-        setBarcode(code);
-        window.scrollTo(0,0);
-      });
-      return;
-    }
+    // Not in the inventory — search the catalog by code, description, machine or component.
+    const hits = catalogSearch(text);
+    if(hits.length === 1){ updShowCatalogPart(hits[0].code, hits[0].rec); return; }
+    if(hits.length > 1){ updShowCatalogPicker(hits, text); return; }
     showUpdAlert('⚠ <b>No match.</b><br>Nothing found for "' + escapeHtml(text) +
-      '".<br><br>Add it first from <b>➕ Add</b> if it\'s a new part.', 'red');
+      '" in your stock or the parts catalog.<br><br>Add it from <b>➕ Add</b> if it\'s a new part.', 'red');
     return;
   }
   if(matches.length === 1){ updShowOne(matches[0]); return; }
   updShowPicker(matches, text);
+}
+
+/* Several catalog parts matched a text search — let the user pick one. */
+function updShowCatalogPicker(hits, text){
+  let html = '<div style="text-align:left;">' +
+    '<div style="font-weight:800;margin-bottom:8px;">📚 ' + hits.length + ' catalog parts match "' + escapeHtml(text) + '"</div>' +
+    '<div style="font-size:12px;opacity:.75;margin-bottom:8px;">None of these are in your stock yet — pick one to see its details.</div>';
+  hits.forEach((h,i)=>{
+    const thumb = h.rec.image ? '<img src="'+h.rec.image+'" alt="" style="width:44px;height:44px;object-fit:contain;border-radius:6px;background:#fff;flex:none;">' : '';
+    html += '<div class="upd-pick" data-cat-idx="'+i+'" style="display:flex;gap:10px;align-items:center;padding:8px;border-radius:10px;cursor:pointer;">' +
+      thumb + '<div style="min-width:0;"><div style="font-weight:700;font-size:13px;">'+escapeHtml(h.code)+'</div>' +
+      '<div style="font-size:12px;opacity:.85;">'+escapeHtml((h.rec.desc||'').slice(0,60))+'</div>' +
+      '<div style="font-size:11px;opacity:.7;">'+escapeHtml((h.rec.devices||[]).join(' + '))+'</div></div></div>';
+  });
+  html += '</div>';
+  showUpdAlert(html, 'amber');
+  document.querySelectorAll('[data-cat-idx]').forEach(node=>{
+    node.addEventListener('click', ()=>{
+      const h = hits[parseInt(node.dataset.catIdx,10)];
+      if(h) updShowCatalogPart(h.code, h.rec);
+    });
+  });
 }
 
 // kept for the camera scan path, which always hands over an exact barcode
