@@ -1213,11 +1213,22 @@
     </header>
 
     <div class="card">
-      <div class="hist-head"><div class="t">Spare Parts Inventory</div></div>
+      <div class="hist-head"><div class="t">Spare Part Stock</div></div>
       <div class="report-row">
         <button class="btn export-btn word" id="repPartsWord">📄 Word</button>
         <button class="btn export-btn" id="repPartsExcel">📊 Excel</button>
       </div>
+    </div>
+
+    <div class="card">
+      <div class="hist-head"><div class="t">Last Inventory Report</div></div>
+      <div id="repInvInfo" style="font-size:12px; color:var(--text-dim); margin-bottom:10px;"></div>
+      <div class="report-row">
+        <button class="btn export-btn word" id="repInvWord">📄 Word</button>
+        <button class="btn export-btn" id="repInvExcel">📊 Excel</button>
+      </div>
+      <button class="btn btn-wide" id="repInvView" style="background:var(--surface-2); color:var(--text); margin-top:8px;">👁 View report</button>
+      <button class="btn btn-wide" id="repInvApply" style="background:var(--laser); border-color:var(--laser); color:#fff; margin-top:8px;">🔄 Replace Spare Part Stock with counted quantities</button>
     </div>
 
     <div class="card">
@@ -1646,7 +1657,7 @@ function scanBeep(){
   }catch(e){}
 }
 
-const APP_VERSION = 'v15.1';
+const APP_VERSION = 'v15.2';
 document.getElementById('appVersion').textContent = APP_VERSION;
 
 /* ---------- slide-in menu ---------- */
@@ -5540,6 +5551,22 @@ function invNextBox(){
   toast('Counting box ' + next);
 }
 
+/* withdrawals recorded for a part, newest first (context for a difference) */
+function invWithdrawalsFor(code){
+  if(!Array.isArray(withdrawals)) return [];
+  return withdrawals.filter(w=> bcKey(w.barcode) === bcKey(code))
+                    .slice().reverse();
+}
+function invWdSummary(code){
+  const list = invWithdrawalsFor(code);
+  if(!list.length) return '';
+  const total = list.reduce((a,w)=> a + (w.qty||0), 0);
+  const recent = list.slice(0,3).map(w=>
+    (w.qty||0) + '× on ' + String(w.time||'').split(',')[0] + (w.caseNumber ? ' (' + w.caseNumber + ')' : '')
+  ).join(' · ');
+  return '🔧 withdrawn ' + total + ' in total — ' + recent + (list.length>3 ? ' …' : '');
+}
+
 function invBuildReport(s){
   const rows = Object.entries(s.counts).map(([code,c])=> ({ code, ...c }));
   const matched   = rows.filter(r=> r.found === r.expected && !r.misplaced);
@@ -5568,9 +5595,23 @@ function invFinish(){
   invDone.unshift(JSON.parse(JSON.stringify(invSession)));
   if(invDone.length > 20) invDone = invDone.slice(0,20);
   invPersistDone();
+  const finished = invDone[0];
   invShowReport(invSession);
   invSession = null;
   invPersist();
+  // offer to write the counted quantities into Spare Part Stock
+  const willChange = Object.entries(finished.counts).filter(([code,c])=>{
+    const e = entries.find(x=> bcKey(x.barcode) === code);
+    return e && (e.qty || 0) !== c.found;
+  }).length;
+  setTimeout(()=>{
+    if(!willChange){ toast('Count finished — stock already matches ✓'); return; }
+    if(confirm('Count finished.\n\n' + willChange + ' part(s) differ from Spare Part Stock.\n\n' +
+               'Replace the current quantities with the quantities you counted?\n\n' +
+               'Choose Cancel to review the report first — you can apply it later from the report or from Reports.')){
+      invApplyCounts(finished);
+    }
+  }, 350);
 }
 
 function invShowReport(s){
@@ -5595,10 +5636,13 @@ function invShowReport(s){
     row('📉','Difference', (rep.diffUnits>0?'+':'') + rep.diffUnits,
         rep.diffUnits===0?'var(--green)':(rep.diffUnits<0?'var(--red)':'var(--laser)'));
 
-  const line = (r, tag, cls, extra)=>
-    '<div class="inv-row"><div class="nm"><b>'+escapeHtml(r.desc || r.code)+'</b>' +
-    '<span>'+escapeHtml(r.code)+' · box '+r.box+(extra||'')+'</span></div>' +
-    '<span class="inv-tag '+cls+'">'+tag+'</span></div>';
+  const line = (r, tag, cls, extra)=>{
+    const wd = invWdSummary(r.code);
+    return '<div class="inv-row"><div class="nm"><b>'+escapeHtml(r.desc || r.code)+'</b>' +
+      '<span>'+escapeHtml(r.code)+' · box '+r.box+(extra||'')+'</span>' +
+      (wd ? '<span style="color:var(--laser);">'+escapeHtml(wd)+'</span>' : '') +
+      '</div><span class="inv-tag '+cls+'">'+tag+'</span></div>';
+  };
   let html = '';
   rep.short.forEach(r=> html += line(r, r.expected - r.found ? '−'+(r.expected-r.found) : '0', 'short', ' · expected '+r.expected+', found '+r.found));
   rep.over.forEach(r=>  html += line(r, '+'+(r.found-r.expected), 'over', ' · expected '+r.expected+', found '+r.found));
@@ -5611,10 +5655,9 @@ function invShowReport(s){
 }
 
 /* write the counted quantities back into the stock list */
-function invApplyCounts(){
-  const sid = el('invReportWrap').dataset.sid;
-  const s = invDone.find(x=> String(x.id) === String(sid));
-  if(!s){ toast('Report not found'); return; }
+function invApplyCounts(session){
+  const s = session || invDone.find(x=> String(x.id) === String(el('invReportWrap').dataset.sid));
+  if(!s){ toast('No inventory report yet'); return; }
   const rows = Object.entries(s.counts);
   const changed = rows.filter(([code,c])=>{
     const e = entries.find(x=> bcKey(x.barcode) === code);
@@ -5631,13 +5674,13 @@ function invApplyCounts(){
   invPersistDone();
   renderHistory();
   persist();
+  if(typeof refreshRepInv === 'function') refreshRepInv();
   toast(changed.length + ' part(s) updated ✓');
 }
 
-function invExportReport(){
-  const sid = el('invReportWrap').dataset.sid;
-  const s = invDone.find(x=> String(x.id) === String(sid));
-  if(!s){ toast('Report not found'); return; }
+function invExportReport(session){
+  const s = session || invDone.find(x=> String(x.id) === String(el('invReportWrap').dataset.sid));
+  if(!s){ toast('No inventory report yet'); return; }
   if(typeof XLSX === 'undefined'){ toast('Excel export is unavailable offline'); return; }
   const rep = invBuildReport(s);
   const data = Object.entries(s.counts).map(([code,c])=> ({
@@ -5649,20 +5692,122 @@ function invExportReport(){
     'Found': c.found,
     'Difference': c.found - c.expected,
     'Status': c.misplaced ? 'Wrong box' : (c.found === c.expected ? 'OK' : (c.found < c.expected ? 'Short' : 'Over')),
-    'Counted at': c.at || ''
+    'Counted at': c.at || '',
+    'Total withdrawn': invWithdrawalsFor(code).reduce((a,w)=> a + (w.qty||0), 0),
+    'Last withdrawn': (invWithdrawalsFor(code)[0] || {}).time || '',
+    'Withdrawal history': invWithdrawalsFor(code).map(w=> (w.qty||0)+'x '+(w.time||'')+(w.caseNumber?' ['+w.caseNumber+']':'')).join(' | ')
   }));
   rep.notCounted.forEach(e=> data.push({
     'Barcode': e.barcode, 'Description': e.desc || '', 'Counted in box': '',
     'Belongs in box': invBoxOf(e), 'Expected': e.qty || 0, 'Found': '',
-    'Difference': '', 'Status': 'Not counted', 'Counted at': ''
+    'Difference': '', 'Status': 'Not counted', 'Counted at': '',
+    'Total withdrawn': invWithdrawalsFor(e.barcode).reduce((a,w)=> a + (w.qty||0), 0),
+    'Last withdrawn': (invWithdrawalsFor(e.barcode)[0] || {}).time || '',
+    'Withdrawal history': invWithdrawalsFor(e.barcode).map(w=> (w.qty||0)+'x '+(w.time||'')+(w.caseNumber?' ['+w.caseNumber+']':'')).join(' | ')
   }));
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.json_to_sheet(data);
-  ws['!cols'] = [{wch:14},{wch:42},{wch:13},{wch:13},{wch:9},{wch:8},{wch:10},{wch:12},{wch:20}];
+  ws['!cols'] = [{wch:14},{wch:42},{wch:13},{wch:13},{wch:9},{wch:8},{wch:10},{wch:12},{wch:20},{wch:14},{wch:20},{wch:52}];
   XLSX.utils.book_append_sheet(wb, ws, 'Stock count');
   XLSX.writeFile(wb, 'stock-count-' + (s.id) + '.xlsx');
   toast('Report exported ✓');
 }
+
+function invExportWord(session){
+  const s = session || invDone[0];
+  if(!s){ toast('No inventory report yet'); return; }
+  const site = (typeof getProject === 'function') ? getProject() : '';
+  const rep = invBuildReport(s);
+  const rows = Object.entries(s.counts).map(([code,c],i)=>{
+    const diff = c.found - c.expected;
+    const status = c.misplaced ? 'Wrong box' : (diff === 0 ? 'OK' : (diff < 0 ? 'Short' : 'Over'));
+    const wd = invWithdrawalsFor(code);
+    return `
+      <tr${i%2===1 ? ' style="background:#eef1f5;"' : ''}>
+        <td style="text-align:center;">${i+1}</td>
+        <td style="font-family:'Courier New',monospace; text-align:center;">${escapeHtml(code)}</td>
+        <td style="font-size:12px;">${escapeHtml(c.desc || '')}</td>
+        <td style="text-align:center;">${c.box}${c.misplaced ? ' <b>(belongs in ' + c.homeBox + ')</b>' : ''}</td>
+        <td style="text-align:center;">${c.expected}</td>
+        <td style="text-align:center; font-weight:bold;">${c.found}</td>
+        <td style="text-align:center; font-weight:bold; color:${diff===0?'#137333':(diff<0?'#c5221f':'#b06000')};">${diff>0?'+':''}${diff}</td>
+        <td style="text-align:center;">${status}</td>
+        <td style="font-size:10.5px;">${wd.length ? escapeHtml(wd.map(w=> (w.qty||0)+'x ' + (w.time||'') + (w.caseNumber?' ['+w.caseNumber+']':'')).join(' | ')) : '—'}</td>
+      </tr>`;
+  }).join('');
+  const notCounted = rep.notCounted.map((e,i)=> `
+      <tr><td style="text-align:center;">${i+1}</td>
+      <td style="font-family:'Courier New',monospace; text-align:center;">${escapeHtml(e.barcode)}</td>
+      <td style="font-size:12px;">${escapeHtml(e.desc || '')}</td>
+      <td style="text-align:center;">${invBoxOf(e)}</td>
+      <td style="text-align:center;">${e.qty || 0}</td></tr>`).join('');
+
+  const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+  <head><meta charset="utf-8"><title>Inventory Report</title>
+  <style>
+    body{ font-family:'Segoe UI',Arial,sans-serif; }
+    h1{ font-size:22px; margin:0 0 2px; }
+    h2{ font-size:15px; margin:22px 0 6px; }
+    .sub{ color:#555; font-size:12px; }
+    .rpt-head{ border-bottom:3px solid #FF5800; padding-bottom:10px; margin-bottom:22px; }
+    table{ border-collapse:collapse; width:100%; margin-top:10px; border:1.5px solid #333; }
+    th{ background:#FF5800; color:#fff; padding:7px 6px; font-size:11px; border:1px solid #cc4600; }
+    td{ border:1px solid #999; padding:6px; font-size:11.5px; }
+    .box{ border:1px solid #ccc; padding:10px 12px; margin-top:10px; font-size:12.5px; }
+  </style></head>
+  <body dir="ltr">
+    <div class="rpt-head"><img src="${WD_LOGO_LOC}" width="150" height="51" alt="Swisslog Healthcare"></div>
+    <h1>Inventory Report${site ? ' - ' + escapeHtml(site) : ''}</h1>
+    <div class="sub">Started: ${escapeHtml(s.startedAt || '')} &nbsp;|&nbsp; Finished: ${escapeHtml(s.finishedAt || '')}${s.applied ? ' &nbsp;|&nbsp; Applied to stock: ' + escapeHtml(s.applied) : ''}</div>
+    <div class="box">
+      <b>Summary</b><br>
+      Parts counted: ${rep.rows.length} &nbsp;|&nbsp; Correct: ${rep.matched.length} &nbsp;|&nbsp;
+      Short: ${rep.short.length} &nbsp;|&nbsp; Over: ${rep.over.length} &nbsp;|&nbsp;
+      Wrong box: ${rep.misplaced.length} &nbsp;|&nbsp; Not counted: ${rep.notCounted.length}<br>
+      Expected quantity: ${rep.expectedUnits} &nbsp;|&nbsp; Counted quantity: ${rep.foundUnits} &nbsp;|&nbsp;
+      <b>Difference: ${rep.diffUnits>0?'+':''}${rep.diffUnits}</b>
+    </div>
+    <h2>Counted parts</h2>
+    <table><thead><tr>
+      <th style="width:26px;">#</th><th>Barcode</th><th>Description</th><th>Box</th>
+      <th>Expected</th><th>Found</th><th>Diff</th><th>Status</th><th>Withdrawal history</th>
+    </tr></thead><tbody>${rows}</tbody></table>
+    ${notCounted ? '<h2>Not counted</h2><table><thead><tr><th style="width:26px;">#</th><th>Barcode</th><th>Description</th><th>Box</th><th>In stock</th></tr></thead><tbody>' + notCounted + '</tbody></table>' : ''}
+  </body></html>`;
+  const blob = new Blob(['\ufeff', html], { type:'application/msword' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'inventory-report-' + s.id + '.doc';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(()=> URL.revokeObjectURL(url), 3000);
+  toast('Report exported ✓');
+}
+
+function refreshRepInv(){
+  const box = el('repInvInfo');
+  if(!box) return;
+  const s = invDone[0];
+  const has = !!s;
+  if(has){
+    const q = s.summary || {};
+    box.innerHTML = 'Finished ' + escapeHtml(s.finishedAt || s.startedAt || '') + ' — ' +
+      (q.counted||0) + ' counted · ' + (q.short||0) + ' short · ' + (q.over||0) + ' over · ' +
+      (q.misplaced||0) + ' wrong box' + (s.applied ? ' · <b>applied to stock</b>' : '');
+  } else {
+    box.textContent = 'No inventory count finished yet — run one from Inventory.';
+  }
+  ['repInvWord','repInvExcel','repInvView','repInvApply'].forEach(id=>{
+    const n = el(id); if(n) n.disabled = !has;
+  });
+}
+el('repInvWord').addEventListener('click', ()=>{ closeMenu(); invExportWord(invDone[0]); });
+el('repInvExcel').addEventListener('click', ()=>{ closeMenu(); invExportReport(invDone[0]); });
+el('repInvView').addEventListener('click', ()=>{
+  if(!invDone[0]){ toast('No inventory report yet'); return; }
+  navTo('inv');
+  invShowReport(invDone[0]);
+});
+el('repInvApply').addEventListener('click', ()=>{ invApplyCounts(invDone[0]); refreshRepInv(); });
 
 /* ---- rendering ---- */
 function showInvAlert(html, kind){
@@ -6165,6 +6310,7 @@ function exportWdExcel(){
 function openReports(){
   closeMenu();
   el('reportsView').classList.add('open');
+  refreshRepInv();
   window.scrollTo(0,0);
 }
 function closeReports(){ el('reportsView').classList.remove('open'); }
