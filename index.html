@@ -891,11 +891,16 @@
 
     <div class="card" id="consListCard">
       <div class="hist-head">
-        <div class="t">Logged consumables</div>
+        <div class="t">Logged boxes</div>
       </div>
       <div class="search-row">
         <input type="text" id="consSearch" placeholder="🔍 Search barcode">
         <button class="btn search-cam" id="btnConsSearchCam" title="Scan a barcode with the camera">📷</button>
+      </div>
+      <div class="cons-tabs" id="consTypeTabs">
+        <button class="cons-tab type-tab active" id="consTypeTabAll" data-type="all">All</button>
+        <button class="cons-tab type-tab" id="consTypeTabPhial" data-type="PhilaBox">PhialBox</button>
+        <button class="cons-tab type-tab" id="consTypeTabPill" data-type="PillBox">PillBox</button>
       </div>
       <div class="cons-tabs">
         <button class="cons-tab active" id="consTabOk" data-tab="ok">✓ Healthy</button>
@@ -1657,7 +1662,7 @@ function scanBeep(){
   }catch(e){}
 }
 
-const APP_VERSION = 'v15.2';
+const APP_VERSION = 'v1.0';
 document.getElementById('appVersion').textContent = APP_VERSION;
 
 /* ---------- slide-in menu ---------- */
@@ -4501,6 +4506,7 @@ let consScanner = null;
 let consRepairId = null;       // id of the box being repaired, or null
 let consTab = 'ok';
 let consSearchFilter = '';
+let consTypeFilter = 'all';   // 'all' | 'PhilaBox' | 'PillBox'
 let consSearchScanMode = false;
 el('consSearch').addEventListener('input', e=>{
   consSearchFilter = e.target.value;
@@ -4755,13 +4761,29 @@ function stopConsCam(){
 }
 
 /* ----- list rendering + tabs + delete + fix ----- */
+function consInTypeFilter(c){
+  return consTypeFilter === 'all' || consMigrateType(c.type) === consTypeFilter;
+}
+function syncConsTabLabels(){
+  const scoped = consumables.filter(consInTypeFilter);
+  const badCount = scoped.filter(c=>c.status==='bad').length;
+  el('consTabBad').classList.toggle('bad-has', badCount>0);
+  el('consTabBad').textContent = '⚠ Needs fixing' + (badCount? ' ('+badCount+')' : '');
+  el('consTabOk').textContent = '✓ Healthy (' + scoped.filter(c=>c.status==='ok').length + ')';
+  // type tabs
+  const nPhial = consumables.filter(c=> consMigrateType(c.type)==='PhilaBox').length;
+  const nPill  = consumables.filter(c=> consMigrateType(c.type)==='PillBox').length;
+  el('consTypeTabAll').textContent   = 'All (' + consumables.length + ')';
+  el('consTypeTabPhial').textContent = 'PhialBox (' + nPhial + ')';
+  el('consTypeTabPill').textContent  = 'PillBox (' + nPill + ')';
+  el('consTypeTabAll').classList.toggle('active', consTypeFilter==='all');
+  el('consTypeTabPhial').classList.toggle('active', consTypeFilter==='PhilaBox');
+  el('consTypeTabPill').classList.toggle('active', consTypeFilter==='PillBox');
+}
 function syncConsTabs(){
   el('consTabOk').classList.toggle('active', consTab==='ok');
   el('consTabBad').classList.toggle('active', consTab==='bad');
-  const badCount = consumables.filter(c=>c.status==='bad').length;
-  el('consTabBad').classList.toggle('bad-has', badCount>0);
-  el('consTabBad').textContent = '⚠ Needs fixing' + (badCount? ' ('+badCount+')' : '');
-  el('consTabOk').textContent = '✓ Healthy (' + consumables.filter(c=>c.status==='ok').length + ')';
+  syncConsTabLabels();
   renderConsList();
 }
 
@@ -4769,20 +4791,19 @@ function renderConsList(){
   const list = el('consList');
   const q = consSearchFilter.trim().toLowerCase();
   const rows = consumables.filter(c=>{
+    if(consTypeFilter !== 'all' && consMigrateType(c.type) !== consTypeFilter) return false;
     if(consTab==='bad' ? c.status!=='bad' : c.status!=='ok') return false;
     if(!q) return true;
     return c.codes.some(code=> String(code).toLowerCase().includes(q));
   });
   el('consCount').textContent = consumables.length;
   if(rows.length===0){
-    list.innerHTML = '<div class="hist-empty">'+(q ? 'No matches for "'+escapeHtml(consSearchFilter)+'"' : (consTab==='bad'?'No problem boxes 🎉':'No consumables logged yet'))+'</div>';
-    // keep tab labels fresh
-    const badCount = consumables.filter(c=>c.status==='bad').length;
-    el('consTabBad').classList.toggle('bad-has', badCount>0);
-    el('consTabBad').textContent = '⚠ Needs fixing' + (badCount? ' ('+badCount+')' : '');
-    el('consTabOk').textContent = '✓ Healthy (' + consumables.filter(c=>c.status==='ok').length + ')';
+    const scope = consTypeFilter === 'all' ? 'boxes' : consLabel(consTypeFilter) + ' boxes';
+    list.innerHTML = '<div class="hist-empty">'+(q ? 'No matches for "'+escapeHtml(consSearchFilter)+'"' : (consTab==='bad'?'No problem '+scope+' 🎉':'No '+scope+' logged yet'))+'</div>';
+    syncConsTabLabels();
     return;
   }
+  syncConsTabLabels();
   list.innerHTML = '';
   rows.forEach(c=>{
     const div = document.createElement('div');
@@ -4854,6 +4875,9 @@ el('consManualAdd').addEventListener('click', ()=>{
 el('consManual').addEventListener('keydown', e=>{ if(e.key==='Enter') el('consManualAdd').click(); });
 el('consTabOk').addEventListener('click', ()=>{ consTab='ok'; syncConsTabs(); });
 el('consTabBad').addEventListener('click', ()=>{ consTab='bad'; syncConsTabs(); });
+el('consTypeTabAll').addEventListener('click',   ()=>{ consTypeFilter='all';       syncConsTabs(); });
+el('consTypeTabPhial').addEventListener('click', ()=>{ consTypeFilter='PhilaBox';  syncConsTabs(); });
+el('consTypeTabPill').addEventListener('click',  ()=>{ consTypeFilter='PillBox';   syncConsTabs(); });
 el('repBoxWord').addEventListener('click', ()=>{ closeMenu(); exportConsWord(); });
 el('repBoxExcel').addEventListener('click', ()=>{ closeMenu(); exportConsExcel(); });
 
