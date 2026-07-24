@@ -1646,7 +1646,7 @@ function scanBeep(){
   }catch(e){}
 }
 
-const APP_VERSION = 'v15.0';
+const APP_VERSION = 'v15.1';
 document.getElementById('appVersion').textContent = APP_VERSION;
 
 /* ---------- slide-in menu ---------- */
@@ -5477,9 +5477,16 @@ function invCapture(code){
       : '');
   el('invQtyInput').value = e.qty || 0;
   el('invExpectedNote').textContent = 'The stock list says there should be ' + (e.qty || 0) + '.';
+  el('invCountCard').classList.remove('dim');
   el('invCountCard').style.display = 'block';
   el('invCountCard').scrollIntoView({ behavior:'smooth', block:'center' });
   hideInvAlert();
+}
+
+function invHideCount(){
+  invPending = null;
+  el('invCountCard').style.display = 'none';
+  el('invCountCard').classList.add('dim');
 }
 
 function invConfirmCount(){
@@ -5495,8 +5502,7 @@ function invConfirmCount(){
     misplaced: invPending.misplaced,
     at: new Date().toLocaleString('en-GB', { hour12:true })
   };
-  invPending = null;
-  el('invCountCard').style.display = 'none';
+  invHideCount();
   invPersist();
   invRender();
   toast('Recorded ' + found);
@@ -5527,6 +5533,7 @@ function invNextBox(){
   const next = invSession.boxes[i+1];
   if(next === undefined){ toast('That was the last box — finish to see the report'); return; }
   invSession.currentBox = next;
+  invHideCount();
   invPersist();
   invRender();
   window.scrollTo(0,0);
@@ -5786,12 +5793,11 @@ el('invQtyPlus').addEventListener('click', ()=>{
   el('invQtyInput').value = (parseInt(el('invQtyInput').value,10)||0) + 1;
 });
 el('invConfirm').addEventListener('click', invConfirmCount);
-el('invCountCancel').addEventListener('click', ()=>{
-  invPending = null; el('invCountCard').style.display = 'none';
-});
+el('invCountCancel').addEventListener('click', invHideCount);
 el('invBoxSelect').addEventListener('change', e=>{
   if(!invSession) return;
   invSession.currentBox = parseInt(e.target.value,10);
+  invHideCount();
   invPersist(); invRender();
 });
 el('invMissingBtn').addEventListener('click', invMarkRest);
