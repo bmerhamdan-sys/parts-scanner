@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
-<title>Spare Parts Scanner — BoxPicker / PillPick</title>
+<title>Stock Management — BoxPicker / PillPick</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script>try{document.documentElement.setAttribute('data-theme', localStorage.getItem('partsScanner.theme')||'light');}catch(e){}</script>
@@ -134,6 +134,19 @@
     display:flex; align-items:center; justify-content:space-between; gap:10px;
   }
   .brand-line2 .brand-sub{ flex:1; min-width:0; }
+  .inv-bar{ height:10px; border-radius:99px; background:var(--surface-2); overflow:hidden; border:1px solid var(--border); }
+  .inv-bar-fill{ height:100%; width:0%; background:var(--green); border-radius:99px; transition:width .25s ease; }
+  .inv-row{ display:flex; align-items:center; gap:10px; padding:9px 4px; border-bottom:1px solid var(--border); }
+  .inv-row:last-child{ border-bottom:none; }
+  .inv-row .nm{ flex:1; min-width:0; }
+  .inv-row .nm b{ display:block; font-size:13px; }
+  .inv-row .nm span{ font-size:11px; color:var(--text-dim); }
+  .inv-tag{ font-size:11px; font-weight:700; padding:3px 8px; border-radius:99px; white-space:nowrap; }
+  .inv-tag.todo{ background:var(--surface-2); color:var(--text-dim); }
+  .inv-tag.ok{ background:var(--green); color:#fff; }
+  .inv-tag.short{ background:var(--red); color:#fff; }
+  .inv-tag.over{ background:var(--laser); color:#fff; }
+  .inv-tag.extra{ background:var(--amber); color:#fff; }
   @media (max-width: 400px){
     .brand-logo{ height:54px; }
     .counter-pill.dual{ font-size:10px; gap:4px; }
@@ -710,7 +723,7 @@
       <button class="theme-btn nav-menu" id="btnMenu" title="Menu" aria-label="Menu">☰</button>
     </div>
     <div class="brand-line2">
-      <div class="brand-sub">Spare Parts Scanner · <span id="appVersion"></span></div>
+      <div class="brand-sub">Stock Management · <span id="appVersion"></span></div>
       <div class="counter-pill dual">
         <span class="cp-parts"><b id="countBadge">0</b> parts</span>
         <i>·</i>
@@ -748,6 +761,7 @@
       <div class="menu-label">Modules</div>
       <button class="menu-item" id="btnHome">🏠 Home</button>
       <button class="menu-item" id="btnAddParts">➕ Add</button>
+      <button class="menu-item" id="btnOpenInventory">📋 Inventory (stock count)</button>
       <button class="menu-item" id="btnOpenWithdraw">🔧 Parts Withdrawal</button>
       <button class="menu-item" id="btnOpenUpdate">🔍 Search and update part</button>
       <button class="menu-item" id="btnOpenOrganizer">🧰 Parts Organizer stock-take</button>
@@ -775,7 +789,7 @@
         <button class="theme-btn nav-menu" id="homeMenu" title="Menu" aria-label="Menu">☰</button>
       </div>
       <div class="brand-line2">
-        <div class="brand-sub">Inventory Management · <span id="homeVersion"></span></div>
+        <div class="brand-sub">Stock Management · <span id="homeVersion"></span></div>
       </div>
     </header>
 
@@ -816,6 +830,7 @@
     </div>
 
     <button class="btn btn-primary btn-wide home-go" id="goEntry">➕ Add / scan parts</button>
+    <button class="btn btn-wide home-go" id="goInventory">📋 Inventory (stock count)</button>
     <button class="btn btn-wide home-go" id="goWithdraw">🔧 Parts Withdrawal</button>
     <button class="btn btn-wide home-go" id="goSearchUpdate">🔍 Search and update part</button>
     <button class="btn btn-wide home-go" id="goConsumables">📦 Box Inventory</button>
@@ -1287,6 +1302,110 @@
     </div>
   </div>
 
+  <!-- ============ INVENTORY (box-by-box stock count) ============ -->
+  <div class="cons-view" id="invView">
+    <header class="top cons-top brand-head">
+      <div class="brand-row3">
+        <button class="theme-btn nav-back" id="invBack" title="Back" aria-label="Back">←</button>
+        <img class="brand-logo" id="brandLogoInv" alt="Swisslog Healthcare">
+        <button class="theme-btn nav-menu" id="invMenuBtn" title="Menu" aria-label="Menu">☰</button>
+      </div>
+      <div class="brand-line2">
+        <div class="brand-sub">Inventory · box-by-box count</div>
+        <div class="counter-pill">Counted <b id="invCounterPill">0</b></div>
+      </div>
+    </header>
+
+    <!-- ---- no session running: start / resume ---- -->
+    <div id="invStartWrap">
+      <div class="card">
+        <div class="hist-head"><div class="t">Start a stock count</div></div>
+        <div style="font-size:12px; color:var(--text-dim); margin-bottom:12px;">
+          You count one box at a time. For each box the app lists what should be inside — scan each part,
+          confirm how many you actually found, and it records every difference. You can stop and come back;
+          nothing is lost.
+        </div>
+        <div id="invPlan" style="font-size:13px; line-height:1.9; margin-bottom:12px;"></div>
+        <button class="btn btn-primary btn-wide" id="invStartBtn">📋 Start counting</button>
+      </div>
+
+      <div class="card" id="invPastCard">
+        <div class="hist-head"><div class="t">Finished counts</div></div>
+        <div id="invPastList"></div>
+      </div>
+    </div>
+
+    <!-- ---- session running ---- -->
+    <div id="invSessionWrap" style="display:none;">
+      <div class="card">
+        <div class="hist-head">
+          <div class="t" id="invBoxTitle">Box 1</div>
+          <div class="counter-pill" id="invBoxPill">0 / 0</div>
+        </div>
+        <div class="inv-bar"><div class="inv-bar-fill" id="invBarFill"></div></div>
+        <div id="invOverall" style="font-size:12px; color:var(--text-dim); margin-top:8px;"></div>
+        <div class="scan-row" style="margin-top:12px;">
+          <select id="invBoxSelect" style="flex:1; padding:11px 12px; border-radius:10px; background:var(--surface-2); border:1.5px solid var(--border); color:var(--text); font-size:14px;"></select>
+        </div>
+      </div>
+
+      <div class="card" id="invScanCard">
+        <div class="step-label"><div class="step-num">1</div><div class="step-title">Scan a part in this box</div></div>
+        <div class="scan-box idle" id="invScanBox" style="aspect-ratio:auto; height:280px;"><div id="invReader" style="width:100%; height:100%;"></div></div>
+        <button class="btn btn-primary btn-wide" id="invStartCam" style="margin-top:12px;">▶ Start camera</button>
+        <button class="btn btn-stop btn-wide" id="invStopCam" style="display:none; margin-top:12px;">⏹ Stop camera</button>
+        <div class="scan-row" style="margin-top:10px;">
+          <input type="text" id="invManual" placeholder="Or type the barcode">
+          <button class="btn" id="invManualAdd">Enter</button>
+        </div>
+        <div class="cons-alert" id="invAlert"></div>
+      </div>
+
+      <!-- count confirm panel -->
+      <div class="card dim" id="invCountCard" style="display:none;">
+        <div class="cons-next-msg" id="invFound"></div>
+        <div class="step-label" style="margin-top:4px;"><div class="step-num">2</div><div class="step-title">How many did you actually find?</div></div>
+        <div class="qty-row">
+          <button class="btn qty-btn" id="invQtyMinus">−</button>
+          <input type="number" id="invQtyInput" min="0" value="0" inputmode="numeric">
+          <button class="btn qty-btn" id="invQtyPlus">+</button>
+        </div>
+        <div id="invExpectedNote" style="font-size:12px; color:var(--text-dim); margin-top:8px; text-align:center;"></div>
+        <button class="btn btn-wide" id="invConfirm" style="background:var(--green); border-color:var(--green); color:#fff; margin-top:14px;">✓ Record count</button>
+        <button class="btn btn-wide" id="invCountCancel" style="background:var(--surface-2); color:var(--text); margin-top:8px;">✕ Cancel</button>
+      </div>
+
+      <div class="card">
+        <div class="hist-head"><div class="t">Parts in this box</div></div>
+        <div id="invBoxList"></div>
+        <button class="btn btn-wide" id="invMissingBtn" style="background:var(--amber); border-color:var(--amber); color:#fff; margin-top:10px;">⚠ Mark the rest as not found (0)</button>
+        <button class="btn btn-primary btn-wide" id="invNextBox" style="margin-top:8px;">➡ Next box</button>
+        <button class="btn btn-wide" id="invFinishBtn" style="background:var(--laser); border-color:var(--laser); color:#fff; margin-top:8px;">🏁 Finish &amp; see report</button>
+        <button class="btn btn-wide" id="invDiscardBtn" style="background:var(--surface-2); color:var(--text); margin-top:8px;">✕ Discard this count</button>
+      </div>
+    </div>
+
+    <!-- ---- report ---- -->
+    <div id="invReportWrap" style="display:none;">
+      <div class="card">
+        <div class="hist-head"><div class="t" id="invReportTitle">Inventory report</div></div>
+        <div id="invReportSummary" style="font-size:13px; line-height:1.9;"></div>
+      </div>
+      <div class="card">
+        <div class="hist-head"><div class="t">Differences</div></div>
+        <div id="invReportDetail"></div>
+      </div>
+      <div class="card">
+        <button class="btn btn-primary btn-wide" id="invApplyBtn">✅ Update stock to the counted quantities</button>
+        <div style="font-size:12px; color:var(--text-dim); margin:8px 0 12px;">
+          This overwrites each counted part's quantity with what you actually found. Parts you didn't count are left alone.
+        </div>
+        <button class="btn btn-wide" id="invExportBtn" style="background:var(--surface-2); color:var(--text);">⬇ Export report (Excel)</button>
+        <button class="btn btn-wide" id="invCloseReport" style="background:var(--surface-2); color:var(--text); margin-top:8px;">✕ Close</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ============ PARTS WITHDRAWAL ============ -->
   <div class="cons-view" id="wdView">
     <header class="top cons-top brand-head">
@@ -1527,7 +1646,7 @@ function scanBeep(){
   }catch(e){}
 }
 
-const APP_VERSION = 'v14.9';
+const APP_VERSION = 'v15.0';
 document.getElementById('appVersion').textContent = APP_VERSION;
 
 /* ---------- slide-in menu ---------- */
@@ -1544,7 +1663,7 @@ function closeMenu(){
 el('btnMenu').addEventListener('click', openMenu);
 el('menuClose').addEventListener('click', closeMenu);
 el('menuOverlay').addEventListener('click', closeMenu);
-document.getElementById('appVersionMenu').textContent = 'Spare Parts Scanner · ' + APP_VERSION;
+document.getElementById('appVersionMenu').textContent = 'Stock Management · ' + APP_VERSION;
 el('brandLogo').src = SWISSLOG_LOGO_HDR;
 el('brandLogoCons').src = SWISSLOG_LOGO_HDR;
 
@@ -1950,6 +2069,10 @@ function onBarcode(code){
   scanBeep();   // scan sound for the whole app
   if(typeof orgScanMode !== 'undefined' && orgScanMode){
     orgCapture(code);
+    return;
+  }
+  if(typeof invScanMode !== 'undefined' && invScanMode){
+    invCapture(code);
     return;
   }
   if(typeof wdScanMode !== 'undefined' && wdScanMode){
@@ -3980,7 +4103,7 @@ function xlsxLogoBuffer(){
 
 async function buildBrandedXlsx({ sheetName, title, subtitle, rows, colWidths, fileName, photos, photoCol, photoSets }){
   const wb = new ExcelJS.Workbook();
-  wb.creator = 'Spare Parts Scanner';
+  wb.creator = 'Stock Management';
   const ws = wb.addWorksheet(sheetName, { views:[{ state:'frozen', ySplit:6 }] });
 
   // rows 1-3 = logo band only (nothing else lives here, so the image can never
@@ -5120,6 +5243,7 @@ function hideAllOverlays(){
   if(wdCamRunning) stopWdCam();
   if(typeof updCamRunning !== 'undefined' && updCamRunning){ try{ stopUpdCam(); }catch(_){ } }
   if(typeof consCamRunning !== 'undefined' && consCamRunning){ try{ stopConsCam(); }catch(_){ } }
+  if(typeof invCamRunning !== 'undefined' && invCamRunning){ try{ stopInvCam(); }catch(_){ } }
   el('homeView').classList.remove('open');
   el('consView').classList.remove('open');
   el('orgView').classList.remove('open');
@@ -5127,6 +5251,7 @@ function hideAllOverlays(){
   el('reportsView').classList.remove('open');
   el('updateView').classList.remove('open');
   el('dataView').classList.remove('open');
+  el('invView').classList.remove('open');
 }
 
 const VIEW_OPENERS = {
@@ -5137,7 +5262,8 @@ const VIEW_OPENERS = {
   wd: openWithdraw,
   reports: openReports,
   update: openUpdateParts,
-  data: openDataView
+  data: openDataView,
+  inv: openInventory
 };
 
 function navTo(id){
@@ -5234,8 +5360,8 @@ el('goConsumables').addEventListener('click', ()=> navTo('cons'));
 el('goReports') && el('goReports').addEventListener('click', ()=> navTo('reports'));
 
 el('brandLogoHome').src = SWISSLOG_LOGO_HDR;
-['brandLogo','brandLogoHome','brandLogoCons','brandLogoUpd','brandLogoReports','brandLogoWd','brandLogoOrg']
-  .forEach(id=> el(id).addEventListener('click', ()=> navTo('home')));
+['brandLogo','brandLogoHome','brandLogoCons','brandLogoUpd','brandLogoReports','brandLogoWd','brandLogoOrg','brandLogoData','brandLogoInv']
+  .forEach(id=>{ const n = el(id); if(n) n.addEventListener('click', ()=> navTo('home')); });
 refreshHome();
 
 el('btnMinMinus').setAttribute('tabindex','-1');
@@ -5263,6 +5389,418 @@ el('orgMenuBtn').addEventListener('click', openMenu);
    Pulls a quantity out of an existing part's stock for maintenance use.
    This LOWERS the part's total Qty (same rule as manual consumption), so any
    Organizer stock is trimmed automatically if it no longer fits.            */
+/* ============================================================
+   INVENTORY — box-by-box stock count (cycle count)
+   A session snapshots what the stock list says should be in each
+   box, then records what was actually found. Differences are
+   reported and can be written back to the stock list.
+   ============================================================ */
+const INV_KEY      = 'partsScanner.inventory.v1';   // active session
+const INV_DONE_KEY = 'partsScanner.inventoryDone.v1'; // finished sessions
+let invSession = null;      // { id, startedAt, boxes:[], counts:{barcode:{...}}, extras:[], currentBox }
+let invDone = [];           // finished session reports
+let invScanMode = false, invCamRunning = false, invPending = null;
+
+async function invPersist(){ try{ return await idbSet(INV_KEY, JSON.stringify(invSession)); }catch(e){ return false; } }
+async function invPersistDone(){ try{ return await idbSet(INV_DONE_KEY, JSON.stringify(invDone)); }catch(e){ return false; } }
+async function invRestore(){
+  try{
+    const raw = await idbGet(INV_KEY);
+    if(raw){ const p = JSON.parse(raw); if(p && p.id) invSession = p; }
+  }catch(e){}
+  try{
+    const raw2 = await idbGet(INV_DONE_KEY);
+    if(raw2){ const p2 = JSON.parse(raw2); if(Array.isArray(p2)) invDone = p2; }
+  }catch(e){}
+}
+
+const invBoxOf = e => e.box || 1;
+function invBoxList(){
+  return [...new Set(entries.map(invBoxOf))].sort((a,b)=> a-b);
+}
+/* parts the stock list says belong in a box */
+function invExpectedIn(box){
+  return entries.filter(e=> invBoxOf(e) === box);
+}
+
+function invStart(){
+  const boxes = invBoxList();
+  if(!boxes.length){ toast('Your stock list is empty'); return; }
+  invSession = {
+    id: Date.now(),
+    startedAt: new Date().toLocaleString('en-GB', { hour12:true }),
+    boxes,
+    currentBox: boxes[0],
+    counts: {},          // barcode -> { box, expected, found, at }
+    extras: []           // { barcode, box, found, desc } scanned where it shouldn't be
+  };
+  invPersist();
+  invRender();
+  toast('Counting box ' + boxes[0]);
+}
+
+function invCountedInBox(box){
+  return Object.values(invSession.counts).filter(c=> c.box === box).length;
+}
+function invTotals(){
+  const expected = entries.length;
+  const counted = Object.keys(invSession.counts).length;
+  return { expected, counted };
+}
+
+/* record a scanned part */
+function invCapture(code){
+  if(!invSession) return;
+  const key = bcKey(code);
+  const e = entries.find(x=> bcKey(x.barcode) === key);
+  const box = invSession.currentBox;
+  if(!e){
+    // not in the stock list at all
+    const rec = catalogLookup(key);
+    showInvAlert('⚠ <b>Not in your stock list.</b><br>' + escapeHtml(key) +
+      (rec ? '<br><span style="font-size:12px;">' + escapeHtml(rec.desc || '') + ' — it is in the catalog, add it from ➕ Add first.</span>'
+           : '<br><span style="font-size:12px;">Unknown part.</span>'), 'red');
+    return;
+  }
+  if(invSession.counts[key]){
+    showInvAlert('ℹ <b>Already counted</b> in box ' + invSession.counts[key].box +
+      ' — found ' + invSession.counts[key].found + '.', 'amber');
+    return;
+  }
+  invPending = { key, entry:e, box, misplaced: invBoxOf(e) !== box };
+  el('invFound').innerHTML =
+    (e.photo || e.catalogPhoto ? '<img src="' + (entryImage(e)) + '" class="upd-photo-big" alt="">' : '') +
+    '<span class="code">' + escapeHtml(e.barcode) + '</span><br>' +
+    '<b>' + escapeHtml(e.desc || '(no description)') + '</b>' +
+    (invPending.misplaced
+      ? '<br><span style="color:var(--amber); font-size:12px;">⚠ The stock list says this belongs in box ' + invBoxOf(e) + '</span>'
+      : '');
+  el('invQtyInput').value = e.qty || 0;
+  el('invExpectedNote').textContent = 'The stock list says there should be ' + (e.qty || 0) + '.';
+  el('invCountCard').style.display = 'block';
+  el('invCountCard').scrollIntoView({ behavior:'smooth', block:'center' });
+  hideInvAlert();
+}
+
+function invConfirmCount(){
+  if(!invPending || !invSession) return;
+  const found = Math.max(0, parseInt(el('invQtyInput').value, 10) || 0);
+  const e = invPending.entry;
+  invSession.counts[invPending.key] = {
+    box: invPending.box,
+    homeBox: invBoxOf(e),
+    expected: e.qty || 0,
+    found,
+    desc: e.desc || '',
+    misplaced: invPending.misplaced,
+    at: new Date().toLocaleString('en-GB', { hour12:true })
+  };
+  invPending = null;
+  el('invCountCard').style.display = 'none';
+  invPersist();
+  invRender();
+  toast('Recorded ' + found);
+}
+
+/* everything still unscanned in this box counts as not found */
+function invMarkRest(){
+  if(!invSession) return;
+  const box = invSession.currentBox;
+  const left = invExpectedIn(box).filter(e=> !invSession.counts[bcKey(e.barcode)]);
+  if(!left.length){ toast('This box is fully counted'); return; }
+  if(!confirm('Mark ' + left.length + ' part(s) in box ' + box + ' as NOT FOUND (0)?')) return;
+  left.forEach(e=>{
+    invSession.counts[bcKey(e.barcode)] = {
+      box, homeBox: invBoxOf(e), expected: e.qty || 0, found: 0,
+      desc: e.desc || '', misplaced:false, notFound:true,
+      at: new Date().toLocaleString('en-GB', { hour12:true })
+    };
+  });
+  invPersist();
+  invRender();
+  toast(left.length + ' marked as not found');
+}
+
+function invNextBox(){
+  if(!invSession) return;
+  const i = invSession.boxes.indexOf(invSession.currentBox);
+  const next = invSession.boxes[i+1];
+  if(next === undefined){ toast('That was the last box — finish to see the report'); return; }
+  invSession.currentBox = next;
+  invPersist();
+  invRender();
+  window.scrollTo(0,0);
+  toast('Counting box ' + next);
+}
+
+function invBuildReport(s){
+  const rows = Object.entries(s.counts).map(([code,c])=> ({ code, ...c }));
+  const matched   = rows.filter(r=> r.found === r.expected && !r.misplaced);
+  const short     = rows.filter(r=> r.found < r.expected);
+  const over      = rows.filter(r=> r.found > r.expected);
+  const misplaced = rows.filter(r=> r.misplaced);
+  const notCounted = entries.filter(e=> !s.counts[bcKey(e.barcode)]);
+  const diffUnits = rows.reduce((a,r)=> a + (r.found - r.expected), 0);
+  return { rows, matched, short, over, misplaced, notCounted, diffUnits,
+           expectedUnits: rows.reduce((a,r)=> a + r.expected, 0),
+           foundUnits: rows.reduce((a,r)=> a + r.found, 0) };
+}
+
+function invFinish(){
+  if(!invSession) return;
+  const rep = invBuildReport(invSession);
+  if(!rep.rows.length){ toast('Nothing counted yet'); return; }
+  if(rep.notCounted.length &&
+     !confirm(rep.notCounted.length + ' part(s) were never counted. Finish anyway?')) return;
+  invSession.finishedAt = new Date().toLocaleString('en-GB', { hour12:true });
+  invSession.summary = {
+    counted: rep.rows.length, matched: rep.matched.length, short: rep.short.length,
+    over: rep.over.length, misplaced: rep.misplaced.length, notCounted: rep.notCounted.length,
+    expectedUnits: rep.expectedUnits, foundUnits: rep.foundUnits
+  };
+  invDone.unshift(JSON.parse(JSON.stringify(invSession)));
+  if(invDone.length > 20) invDone = invDone.slice(0,20);
+  invPersistDone();
+  invShowReport(invSession);
+  invSession = null;
+  invPersist();
+}
+
+function invShowReport(s){
+  const rep = invBuildReport(s);
+  el('invStartWrap').style.display = 'none';
+  el('invSessionWrap').style.display = 'none';
+  el('invReportWrap').style.display = 'block';
+  el('invReportTitle').textContent = 'Count of ' + (s.startedAt || '').split(',')[0];
+  const row = (icon,label,val,color)=> '<div style="display:flex; justify-content:space-between; gap:12px;">' +
+    '<span>'+icon+' '+label+'</span><b'+(color?' style="color:'+color+'"':'')+'>'+val+'</b></div>';
+  el('invReportSummary').innerHTML =
+    row('📦','Boxes counted', [...new Set(rep.rows.map(r=> r.box))].length) +
+    row('🔧','Parts counted', rep.rows.length) +
+    row('✅','Correct', rep.matched.length, 'var(--green)') +
+    row('🔻','Short (less than expected)', rep.short.length, rep.short.length?'var(--red)':'') +
+    row('🔺','Over (more than expected)', rep.over.length, rep.over.length?'var(--laser)':'') +
+    row('⚠️','In the wrong box', rep.misplaced.length, rep.misplaced.length?'var(--amber)':'') +
+    row('⬜','Never counted', rep.notCounted.length) +
+    '<hr style="border:none;border-top:1px solid var(--border);margin:8px 0;">' +
+    row('📊','Expected quantity', rep.expectedUnits) +
+    row('📊','Counted quantity', rep.foundUnits) +
+    row('📉','Difference', (rep.diffUnits>0?'+':'') + rep.diffUnits,
+        rep.diffUnits===0?'var(--green)':(rep.diffUnits<0?'var(--red)':'var(--laser)'));
+
+  const line = (r, tag, cls, extra)=>
+    '<div class="inv-row"><div class="nm"><b>'+escapeHtml(r.desc || r.code)+'</b>' +
+    '<span>'+escapeHtml(r.code)+' · box '+r.box+(extra||'')+'</span></div>' +
+    '<span class="inv-tag '+cls+'">'+tag+'</span></div>';
+  let html = '';
+  rep.short.forEach(r=> html += line(r, r.expected - r.found ? '−'+(r.expected-r.found) : '0', 'short', ' · expected '+r.expected+', found '+r.found));
+  rep.over.forEach(r=>  html += line(r, '+'+(r.found-r.expected), 'over', ' · expected '+r.expected+', found '+r.found));
+  rep.misplaced.forEach(r=> html += line(r, 'wrong box', 'extra', ' · belongs in box '+r.homeBox));
+  rep.notCounted.forEach(e=> html += '<div class="inv-row"><div class="nm"><b>'+escapeHtml(e.desc || e.barcode)+'</b>' +
+    '<span>'+escapeHtml(e.barcode)+' · box '+invBoxOf(e)+'</span></div><span class="inv-tag todo">not counted</span></div>');
+  el('invReportDetail').innerHTML = html || '<div style="font-size:13px; color:var(--green); padding:8px 2px;">✅ Everything matched — no differences.</div>';
+  el('invReportWrap').dataset.sid = s.id;
+  window.scrollTo(0,0);
+}
+
+/* write the counted quantities back into the stock list */
+function invApplyCounts(){
+  const sid = el('invReportWrap').dataset.sid;
+  const s = invDone.find(x=> String(x.id) === String(sid));
+  if(!s){ toast('Report not found'); return; }
+  const rows = Object.entries(s.counts);
+  const changed = rows.filter(([code,c])=>{
+    const e = entries.find(x=> bcKey(x.barcode) === code);
+    return e && (e.qty || 0) !== c.found;
+  });
+  if(!changed.length){ toast('Stock already matches the count'); return; }
+  if(!confirm('Update ' + changed.length + ' part(s) to the quantities you counted?\n\nThis cannot be undone.')) return;
+  const nowStr = new Date().toLocaleString('en-GB', { hour12:true });
+  changed.forEach(([code,c])=>{
+    const e = entries.find(x=> bcKey(x.barcode) === code);
+    if(e){ e.qty = c.found; e.lastTime = nowStr; clampOrgQty(e); }
+  });
+  s.applied = nowStr;
+  invPersistDone();
+  renderHistory();
+  persist();
+  toast(changed.length + ' part(s) updated ✓');
+}
+
+function invExportReport(){
+  const sid = el('invReportWrap').dataset.sid;
+  const s = invDone.find(x=> String(x.id) === String(sid));
+  if(!s){ toast('Report not found'); return; }
+  if(typeof XLSX === 'undefined'){ toast('Excel export is unavailable offline'); return; }
+  const rep = invBuildReport(s);
+  const data = Object.entries(s.counts).map(([code,c])=> ({
+    'Barcode': code,
+    'Description': c.desc || '',
+    'Counted in box': c.box,
+    'Belongs in box': c.homeBox,
+    'Expected': c.expected,
+    'Found': c.found,
+    'Difference': c.found - c.expected,
+    'Status': c.misplaced ? 'Wrong box' : (c.found === c.expected ? 'OK' : (c.found < c.expected ? 'Short' : 'Over')),
+    'Counted at': c.at || ''
+  }));
+  rep.notCounted.forEach(e=> data.push({
+    'Barcode': e.barcode, 'Description': e.desc || '', 'Counted in box': '',
+    'Belongs in box': invBoxOf(e), 'Expected': e.qty || 0, 'Found': '',
+    'Difference': '', 'Status': 'Not counted', 'Counted at': ''
+  }));
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.json_to_sheet(data);
+  ws['!cols'] = [{wch:14},{wch:42},{wch:13},{wch:13},{wch:9},{wch:8},{wch:10},{wch:12},{wch:20}];
+  XLSX.utils.book_append_sheet(wb, ws, 'Stock count');
+  XLSX.writeFile(wb, 'stock-count-' + (s.id) + '.xlsx');
+  toast('Report exported ✓');
+}
+
+/* ---- rendering ---- */
+function showInvAlert(html, kind){
+  const a = el('invAlert');
+  a.className = 'cons-alert show ' + (kind || '');
+  a.innerHTML = html;
+}
+function hideInvAlert(){ el('invAlert').className = 'cons-alert'; }
+
+function invRender(){
+  const running = !!invSession;
+  el('invReportWrap').style.display = 'none';
+  el('invStartWrap').style.display = running ? 'none' : 'block';
+  el('invSessionWrap').style.display = running ? 'block' : 'none';
+
+  if(!running){
+    const boxes = invBoxList();
+    el('invPlan').innerHTML = entries.length
+      ? '<div style="display:flex; justify-content:space-between;"><span>📦 Boxes to count</span><b>' + boxes.length + '</b></div>' +
+        '<div style="display:flex; justify-content:space-between;"><span>🔧 Parts to check</span><b>' + entries.length + '</b></div>'
+      : '<span style="color:var(--text-dim);">Add some parts first — there is nothing to count.</span>';
+    el('invStartBtn').disabled = !entries.length;
+    // finished counts
+    el('invPastList').innerHTML = invDone.length
+      ? invDone.map(s=>{
+          const q = s.summary || {};
+          return '<div class="inv-row" data-inv-past="'+s.id+'" style="cursor:pointer;">' +
+            '<div class="nm"><b>' + escapeHtml(s.finishedAt || s.startedAt || '') + '</b>' +
+            '<span>' + (q.counted||0) + ' counted · ' + (q.short||0) + ' short · ' + (q.over||0) + ' over' +
+            (s.applied ? ' · applied' : '') + '</span></div>' +
+            '<span class="inv-tag ' + ((q.short||q.over||q.misplaced) ? 'short' : 'ok') + '">' +
+            ((q.short||q.over||q.misplaced) ? 'differences' : 'clean') + '</span></div>';
+        }).join('')
+      : '<div style="font-size:12px; color:var(--text-dim); padding:6px 2px;">No counts finished yet.</div>';
+    document.querySelectorAll('[data-inv-past]').forEach(n=> n.addEventListener('click', ()=>{
+      const s = invDone.find(x=> String(x.id) === n.dataset.invPast);
+      if(s) invShowReport(s);
+    }));
+    return;
+  }
+
+  const box = invSession.currentBox;
+  const expected = invExpectedIn(box);
+  const countedHere = expected.filter(e=> invSession.counts[bcKey(e.barcode)]).length;
+  const t = invTotals();
+
+  el('invBoxTitle').textContent = 'Box ' + box;
+  el('invBoxPill').textContent = countedHere + ' / ' + expected.length;
+  el('invBarFill').style.width = (expected.length ? (countedHere/expected.length*100) : 0) + '%';
+  el('invOverall').textContent = 'Overall ' + t.counted + ' of ' + t.expected + ' parts · box ' +
+    (invSession.boxes.indexOf(box)+1) + ' of ' + invSession.boxes.length;
+  el('invCounterPill').textContent = t.counted;
+
+  const sel = el('invBoxSelect');
+  sel.innerHTML = invSession.boxes.map(b=>{
+    const exp = invExpectedIn(b);
+    const done = exp.filter(e=> invSession.counts[bcKey(e.barcode)]).length;
+    return '<option value="'+b+'"'+(b===box?' selected':'')+'>Box '+b+' — '+done+'/'+exp.length+(done===exp.length?' ✓':'')+'</option>';
+  }).join('');
+
+  el('invBoxList').innerHTML = expected.length
+    ? expected.map(e=>{
+        const c = invSession.counts[bcKey(e.barcode)];
+        let tag='todo', txt='to count';
+        if(c){
+          if(c.found === c.expected){ tag='ok'; txt='✓ ' + c.found; }
+          else if(c.found < c.expected){ tag='short'; txt=c.found + ' / ' + c.expected; }
+          else { tag='over'; txt='+' + (c.found - c.expected); }
+        }
+        return '<div class="inv-row"><div class="nm"><b>' + escapeHtml(e.desc || e.barcode) + '</b>' +
+          '<span>' + escapeHtml(e.barcode) + ' · expected ' + (e.qty||0) + '</span></div>' +
+          '<span class="inv-tag ' + tag + '">' + txt + '</span></div>';
+      }).join('')
+    : '<div style="font-size:12px; color:var(--text-dim); padding:6px 2px;">This box has no parts.</div>';
+}
+
+function openInventory(){
+  closeMenu();
+  invRender();
+  el('invView').classList.add('open');
+  window.scrollTo(0,0);
+}
+async function startInvCam(){
+  if(invCamRunning) return;
+  invScanMode = true; invCamRunning = true;
+  el('invStartCam').style.display = 'none';
+  el('invStopCam').style.display = 'block';
+  el('invReader').appendChild(el('reader'));
+  el('invScanBox').classList.remove('idle');
+  try{ await startCamera(); }
+  catch(err){ toast('Camera failed: ' + (err.message || err.name)); stopInvCam(); }
+}
+function stopInvCam(){
+  invScanMode = false; invCamRunning = false;
+  el('invStartCam').style.display = 'block';
+  el('invStopCam').style.display = 'none';
+  el('invScanBox').classList.add('idle');
+  if(cameraRunning){ try{ stopCamera(); }catch(_){ } }
+  const reader = el('reader'), mainBox = el('scanBox');
+  if(reader && mainBox && reader.parentElement !== mainBox){
+    mainBox.insertBefore(reader, mainBox.firstChild);
+  }
+}
+
+el('btnOpenInventory').addEventListener('click', ()=> navTo('inv'));
+el('goInventory').addEventListener('click', ()=> navTo('inv'));
+el('invBack').addEventListener('click', navBack);
+el('invMenuBtn').addEventListener('click', openMenu);
+el('brandLogoInv').src = SWISSLOG_LOGO_HDR;
+el('invStartBtn').addEventListener('click', invStart);
+el('invDiscardBtn').addEventListener('click', ()=>{
+  if(!confirm('Discard the count in progress? Everything counted so far is lost.')) return;
+  invSession = null; invPersist(); invRender(); toast('Count discarded');
+});
+el('invStartCam').addEventListener('click', startInvCam);
+el('invStopCam').addEventListener('click', stopInvCam);
+el('invManualAdd').addEventListener('click', ()=>{
+  const v = el('invManual').value.trim();
+  if(!v){ toast('Type a barcode'); return; }
+  el('invManual').value = '';
+  invCapture(v);
+});
+el('invManual').addEventListener('keydown', e=>{ if(e.key === 'Enter') el('invManualAdd').click(); });
+el('invQtyMinus').addEventListener('click', ()=>{
+  el('invQtyInput').value = Math.max(0, (parseInt(el('invQtyInput').value,10)||0) - 1);
+});
+el('invQtyPlus').addEventListener('click', ()=>{
+  el('invQtyInput').value = (parseInt(el('invQtyInput').value,10)||0) + 1;
+});
+el('invConfirm').addEventListener('click', invConfirmCount);
+el('invCountCancel').addEventListener('click', ()=>{
+  invPending = null; el('invCountCard').style.display = 'none';
+});
+el('invBoxSelect').addEventListener('change', e=>{
+  if(!invSession) return;
+  invSession.currentBox = parseInt(e.target.value,10);
+  invPersist(); invRender();
+});
+el('invMissingBtn').addEventListener('click', invMarkRest);
+el('invNextBox').addEventListener('click', invNextBox);
+el('invFinishBtn').addEventListener('click', invFinish);
+el('invApplyBtn').addEventListener('click', invApplyCounts);
+el('invExportBtn').addEventListener('click', invExportReport);
+el('invCloseReport').addEventListener('click', ()=>{ invRender(); window.scrollTo(0,0); });
+
 const WD_KEY = 'partsScanner.withdrawals.v1';
 let withdrawals = [];   // {id, barcode, desc, qty, devices:[], subs:[], caseNumber, time}
 let wdScanMode = false;
@@ -5972,6 +6510,7 @@ el('brandLogoUpd').src = SWISSLOG_LOGO_HDR;
   await restoreEntries();
   await consRestore();
   await wdRestore();
+  await invRestore();
   await loadCatalog();
   if(syncCatalogPhotos() > 0){ try{ await persist(); }catch(_){}}
   try{ showLastTxn(await idbGet(LASTTXN_KEY)); }catch(_){ showLastTxn(null); }
