@@ -1196,6 +1196,7 @@
       <div class="hist-head"><div class="t">Part details</div></div>
       <div id="updDetailsBody"></div>
       <button class="btn btn-wide" id="updEditBtn" style="background:var(--blue); border-color:var(--blue); color:#fff; margin-top:14px;">✏️ Edit this part</button>
+      <button class="btn btn-wide" id="updWithdrawBtn" style="background:var(--green); border-color:var(--green); color:#fff; margin-top:8px;">🔧 Withdraw this part</button>
       <button class="btn btn-wide" id="updScanAnother" style="background:var(--surface-2); color:var(--text); margin-top:8px;">🔍 Scan another part</button>
     </div>
 
@@ -1662,7 +1663,7 @@ function scanBeep(){
   }catch(e){}
 }
 
-const APP_VERSION = 'v1.0';
+const APP_VERSION = 'v1.1';
 document.getElementById('appVersion').textContent = APP_VERSION;
 
 /* ---------- slide-in menu ---------- */
@@ -6673,6 +6674,16 @@ el('updManualAdd').addEventListener('click', ()=>{
 });
 el('updManual').addEventListener('keydown', e=>{ if(e.key === 'Enter') el('updManualAdd').click(); });
 el('updEditBtn').addEventListener('click', updGoEdit);
+el('updWithdrawBtn').addEventListener('click', ()=>{
+  const e = updFoundEntry;
+  if(!e){ toast('No part selected'); return; }
+  if((e.qty || 0) <= 0){ toast('No quantity left to withdraw'); return; }
+  const code = e.barcode;
+  closeUpdateView();
+  navTo('wd');
+  wdCapture(code);      // opens the withdrawal form with this part loaded
+  window.scrollTo(0,0);
+});
 el('updScanAnother').addEventListener('click', updResetToScan);
 el('updPickerBack').addEventListener('click', updResetToScan);
 el('brandLogoUpd').src = SWISSLOG_LOGO_HDR;
