@@ -1663,7 +1663,7 @@ function scanBeep(){
   }catch(e){}
 }
 
-const APP_VERSION = 'v1.1';
+const APP_VERSION = 'v1.2';
 document.getElementById('appVersion').textContent = APP_VERSION;
 
 /* ---------- slide-in menu ---------- */
@@ -3760,7 +3760,7 @@ function normalizeEntry(e){
     descOriginal: e.descOriginal || '',
     descLang: e.descLang || '',
     descPhoto: e.descPhoto || null,
-    qty: (typeof e.qty === 'number' && e.qty > 0) ? e.qty : 1,
+    qty: (typeof e.qty === 'number' && e.qty >= 0) ? Math.floor(e.qty) : 1,
     box: (typeof e.box === 'number' && e.box > 0) ? e.box : 1,
     minStock: (typeof e.minStock === 'number' && e.minStock >= 0) ? Math.floor(e.minStock) : 1,
     // quantity kept in each Parts Organizer (running stock in the pharmacy).
