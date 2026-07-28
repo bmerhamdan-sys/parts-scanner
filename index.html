@@ -1186,7 +1186,7 @@
       <button class="btn btn-primary btn-wide" id="updStartCam" style="margin-top:12px;">▶ Start camera</button>
       <button class="btn btn-stop btn-wide" id="updStopCam" style="display:none; margin-top:12px;">⏹ Stop camera</button>
       <div class="scan-row" style="margin-top:10px;">
-        <input type="text" id="updManual" placeholder="Barcode or part name">
+        <input type="text" id="updManual" placeholder="Barcode, or name (English / Italian)">
         <button class="btn" id="updManualAdd">Search</button>
       </div>
       <div class="cons-alert" id="updAlert"></div>
@@ -1663,7 +1663,7 @@ function scanBeep(){
   }catch(e){}
 }
 
-const APP_VERSION = 'v1.2';
+const APP_VERSION = 'v1.3';
 document.getElementById('appVersion').textContent = APP_VERSION;
 
 /* ---------- slide-in menu ---------- */
@@ -6452,16 +6452,20 @@ function updShowOne(entry){
   renderUpdDetails(entry);
 }
 
-function updShowPicker(matches, query){
+function updShowPicker(matches, query, fuzzy){
   hideUpdAlert();
   el('updScanCard').style.display = 'none';
   el('updDetailsCard').style.display = 'none';
   el('updPickerCard').style.display = 'block';
-  el('updPickerList').innerHTML = matches.slice(0, 40).map(e=> `
+  const note = fuzzy
+    ? `<div style="font-size:12px; color:var(--amber); padding:2px 2px 8px;">No exact match for "${escapeHtml(query)}" — showing closest parts.</div>`
+    : '';
+  el('updPickerList').innerHTML = note + matches.slice(0, 40).map(e=> `
     <div class="cons-item upd-pick" data-id="${e.id}">
       <div class="ci-body">
         <div class="ci-code">${escapeHtml(e.barcode)}</div>
         <div class="ci-meta">${escapeHtml(e.desc || 'No description')}</div>
+        ${e.descOriginal ? `<div class="ci-meta" style="font-style:italic;">${escapeHtml(e.descOriginal)}</div>` : ''}
         <div class="ci-meta">Box ${e.box||1} · Qty ${e.qty||0}</div>
       </div>
     </div>`).join('');
@@ -6479,16 +6483,25 @@ function updShowPicker(matches, query){
 function catalogSearch(text, limit){
   const q = String(text || '').trim().toLowerCase();
   if(!q || !catalogCount) return [];
-  const out = [];
+  const hayOf = r => (String(r.desc||'') + ' ' + String(r.descOriginal||'') + ' ' +
+                      (r.devices||[]).join(' ') + ' ' + (r.subs||[]).join(' ')).toLowerCase();
+  const exact = [], fuzz = [];
   for(const code in CATALOG){
     const r = CATALOG[code];
     if(!r) continue;
-    const hay = code.toLowerCase() + ' ' + String(r.desc||'').toLowerCase() + ' ' +
-                (r.devices||[]).join(' ').toLowerCase() + ' ' + (r.subs||[]).join(' ').toLowerCase();
-    if(hay.includes(q)) out.push({ code, rec:r });
-    if(out.length >= (limit || 25)) break;
+    const hay = code.toLowerCase() + ' ' + hayOf(r);
+    if(hay.includes(q)){ exact.push({ code, rec:r }); }
+    else {
+      const s = fuzzyScore(q, hay);
+      if(s > 0) fuzz.push({ code, rec:r, s });
+    }
+    if(exact.length >= (limit || 25)) break;
   }
-  // exact barcode first, then shortest description (most specific)
+  let out = exact;
+  if(!out.length){                       // typo fallback only when nothing matched exactly
+    fuzz.sort((a,b)=> b.s - a.s);
+    out = fuzz.slice(0, limit || 25);
+  }
   out.sort((a,b)=> (bcKey(a.code)===bcKey(q) ? -1 : bcKey(b.code)===bcKey(q) ? 1 : 0));
   return out;
 }
@@ -6569,6 +6582,70 @@ function addCatalogPartAsZero(code, rec){
   updShowOne(e);
 }
 
+/* ---- typo-tolerant search (edit-distance / fuzzy) ----
+   Lets a mistyped letter still find the part. Works across the barcode,
+   the English AND Italian descriptions, and where-used. */
+function levBounded(a, b, max){
+  if(a === b) return 0;
+  const la = a.length, lb = b.length;
+  if(Math.abs(la - lb) > max) return max + 1;
+  if(la === 0) return lb; if(lb === 0) return la;
+  let prev = new Array(lb + 1);
+  for(let j = 0; j <= lb; j++) prev[j] = j;
+  for(let i = 1; i <= la; i++){
+    let cur = new Array(lb + 1);
+    cur[0] = i;
+    let best = cur[0];
+    const ca = a.charCodeAt(i - 1);
+    for(let j = 1; j <= lb; j++){
+      const cost = ca === b.charCodeAt(j - 1) ? 0 : 1;
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost);
+      if(cur[j] < best) best = cur[j];
+    }
+    if(best > max) return max + 1;   // whole row already worse than allowed
+    prev = cur;
+  }
+  return prev[lb];
+}
+// how far off a word may be, by its length
+function fuzzyTolerance(len){ return len <= 3 ? 0 : (len <= 6 ? 1 : 2); }
+
+// score one query word against a haystack (already lowercased); 0 = no match
+function fuzzyWordScore(qw, hayWords){
+  if(qw.length < 2) return 0;
+  let best = 0;
+  const tol = fuzzyTolerance(qw.length);
+  for(const w of hayWords){
+    if(!w) continue;
+    if(w.includes(qw)){ best = Math.max(best, 100); continue; }        // substring
+    if(qw.length >= 4 && w.startsWith(qw.slice(0, qw.length - 1))) best = Math.max(best, 70); // shared prefix
+    if(tol > 0){
+      const d = levBounded(qw, w, tol);
+      if(d <= tol) best = Math.max(best, d === 1 ? 60 : 35);
+      else if(w.length > qw.length){
+        // typo inside a longer word (e.g. "cuttr" in "refresh cutter")
+        for(let s = 0; s + qw.length <= w.length; s++){
+          if(levBounded(qw, w.substr(s, qw.length + 1), tol) <= tol){ best = Math.max(best, 30); break; }
+        }
+      }
+    }
+  }
+  return best;
+}
+// every query word must match something (typo-tolerant); returns total score
+function fuzzyScore(query, hay){
+  const qWords = query.split(/[^a-z0-9]+/i).filter(w=> w.length >= 2);
+  if(!qWords.length) return 0;
+  const hayWords = hay.split(/[^a-z0-9]+/i).filter(Boolean);
+  let total = 0;
+  for(const qw of qWords){
+    const s = fuzzyWordScore(qw, hayWords);
+    if(s === 0) return 0;          // a word with no match at all -> not a hit
+    total += s;
+  }
+  return total;
+}
+
 function updRunSearch(text){
   text = String(text || '').trim();
   if(!text) return;
@@ -6581,14 +6658,25 @@ function updRunSearch(text){
   if(exact){ updShowOne(exact); return; }
 
   const q = text.toLowerCase();
-  const matches = entries.filter(e=>
-    String(e.barcode || '').toLowerCase().includes(q) ||
-    String(e.desc || '').toLowerCase().includes(q) ||
-    String(updDeviceWhereLabel(e) || '').toLowerCase().includes(q)
-  );
+  // full text of a part: barcode + English desc + Italian desc + where-used
+  const hay = e => (String(e.barcode||'') + ' ' + String(e.desc||'') + ' ' +
+                    String(e.descOriginal||'') + ' ' + String(updDeviceWhereLabel(e)||'')).toLowerCase();
+
+  // 1) plain substring match (fast, precise)
+  let matches = entries.filter(e=> hay(e).includes(q));
+
+  // 2) typo-tolerant fallback — only when nothing matched exactly
+  let fuzzy = false;
+  if(matches.length === 0){
+    const scored = entries
+      .map(e=> ({ e, s: fuzzyScore(q, hay(e)) }))
+      .filter(x=> x.s > 0)
+      .sort((a,b)=> b.s - a.s);
+    if(scored.length){ matches = scored.map(x=> x.e); fuzzy = true; }
+  }
 
   if(matches.length === 0){
-    // Not in the inventory — search the catalog by code, description, machine or component.
+    // Not in the inventory — search the catalog by code, description (EN/IT), machine or component.
     const hits = catalogSearch(text);
     if(hits.length === 1){ updShowCatalogPart(hits[0].code, hits[0].rec); return; }
     if(hits.length > 1){ updShowCatalogPicker(hits, text); return; }
@@ -6597,7 +6685,7 @@ function updRunSearch(text){
     return;
   }
   if(matches.length === 1){ updShowOne(matches[0]); return; }
-  updShowPicker(matches, text);
+  updShowPicker(matches, text, fuzzy);
 }
 
 /* Several catalog parts matched a text search — let the user pick one. */
