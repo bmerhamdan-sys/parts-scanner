@@ -1663,7 +1663,7 @@ function scanBeep(){
   }catch(e){}
 }
 
-const APP_VERSION = 'v1.3';
+const APP_VERSION = 'v1.6';
 document.getElementById('appVersion').textContent = APP_VERSION;
 
 /* ---------- slide-in menu ---------- */
@@ -1762,6 +1762,7 @@ async function upsertCatalogFromEntry(e){
   if(subs.length) rec.subs = subs; else delete rec.subs;
   const img = entryImage(e);
   if(img) rec.image = img;
+  if(e.conf) rec.conf = e.conf;      // remember how sure the user was, for future recalls
   rec.source = 'user';
   rec.inInventory = true;
   if(!rec.addedAt) rec.addedAt = new Date().toISOString();
@@ -2293,7 +2294,7 @@ function applyCatalog(rec){
   if(!rec) return false;
   current.devices = Array.isArray(rec.devices) && rec.devices.length ? rec.devices.slice() : [];
   current.subs    = Array.isArray(rec.subs) ? rec.subs.filter(s=> SUB_COMPONENTS.includes(s)) : [];
-  current.conf    = 'High';                       // known part → confident identification
+  current.conf    = rec.conf || 'High';           // official catalog parts are High
   current.desc    = rec.desc || '';
   current.descOriginal = rec.descOriginal || '';
   current.descLang     = rec.descOriginal ? 'Italian' : '';
@@ -3803,11 +3804,23 @@ function syncCatalogPhotos(){
   let n = 0;
   entries.forEach(e=>{
     const rec = CATALOG[bcKey(e.barcode)];
-    if(rec && rec.image){
-      if(e.catalogPhoto !== rec.image) e.catalogPhoto = rec.image;
-      e.catalogMatched = true;
-      n++;
+    if(!rec) return;
+    let changed = false;
+    if(rec.image && e.catalogPhoto !== rec.image){ e.catalogPhoto = rec.image; changed = true; }
+    if(rec.image && !e.catalogMatched){ e.catalogMatched = true; changed = true; }
+    // A part that comes from an official Swisslog spare-parts TABLE is a confirmed
+    // identification: confidence is High and the component is whatever the table says.
+    // Only for the official tables (source 'catalog'); the user's own scans are left untouched.
+    if(rec.source === 'catalog'){
+      if(e.conf !== 'High'){ e.conf = 'High'; changed = true; }          // upgrade, never downgrade
+      // module comes from the catalog; if the catalog has none (e.g. BoxPicker parts),
+      // just drop a leftover "Not sure" since the part is now identified.
+      const newSubs = (Array.isArray(rec.subs) && rec.subs.length)
+        ? rec.subs.filter(x=> SUB_COMPONENTS.includes(x))
+        : (Array.isArray(e.subs) ? e.subs : []).filter(x=> x && x !== 'Not sure');
+      if(JSON.stringify(newSubs) !== JSON.stringify(e.subs || [])){ e.subs = newSubs; changed = true; }
     }
+    if(changed) n++;
   });
   return n;
 }
@@ -6388,6 +6401,7 @@ function openUpdateParts(){
   window.scrollTo(0,0);
 }
 function closeUpdateView(){
+  updDetailBack = null;
   if(updCamRunning) stopUpdCam();
   el('updateView').classList.remove('open');
 }
@@ -6401,6 +6415,7 @@ function hideUpdAlert(){ el('updAlert').classList.remove('show'); el('updAlert')
 let updFoundEntry = null;
 
 function updResetToScan(){
+  updDetailBack = null;
   updFoundEntry = null;
   el('updScanCard').style.display = 'block';
   el('updDetailsCard').style.display = 'none';
@@ -6452,8 +6467,23 @@ function updShowOne(entry){
   renderUpdDetails(entry);
 }
 
+// When set, the update-view back arrow returns to this results list
+// (e.g. the search picker) instead of leaving the whole search screen.
+let updDetailBack = null;
+function updGoBack(){
+  if(updDetailBack){
+    const fn = updDetailBack;
+    updDetailBack = null;
+    fn();
+    window.scrollTo(0,0);
+    return;
+  }
+  navBack();
+}
+
 function updShowPicker(matches, query, fuzzy){
   hideUpdAlert();
+  updDetailBack = null;              // the list itself is the top of this search
   el('updScanCard').style.display = 'none';
   el('updDetailsCard').style.display = 'none';
   el('updPickerCard').style.display = 'block';
@@ -6472,7 +6502,11 @@ function updShowPicker(matches, query, fuzzy){
   el('updPickerList').querySelectorAll('.upd-pick').forEach(row=>{
     row.addEventListener('click', ()=>{
       const found = entries.find(x=> x.id === Number(row.dataset.id));
-      if(found) updShowOne(found);
+      if(found){
+        updDetailBack = ()=> updShowPicker(matches, query, fuzzy);   // back returns to this list
+        updShowOne(found);
+        window.scrollTo(0,0);
+      }
     });
   });
 }
@@ -6559,7 +6593,7 @@ function addCatalogPartAsZero(code, rec){
     barcode: key,
     devices: Array.isArray(rec.devices) ? rec.devices.slice() : [],
     subs: subs,
-    conf: 'High',
+    conf: rec.conf || 'High',
     photo: rec.image || null,
     desc: rec.desc || '',
     descOriginal: rec.descOriginal || '',
@@ -6649,6 +6683,7 @@ function fuzzyScore(query, hay){
 function updRunSearch(text){
   text = String(text || '').trim();
   if(!text) return;
+  updDetailBack = null;
   const now = Date.now();
   if(text === updLastRead.code && now - updLastRead.t < 1200) return;
   updLastRead = { code:text, t:now };
@@ -6705,7 +6740,10 @@ function updShowCatalogPicker(hits, text){
   document.querySelectorAll('[data-cat-idx]').forEach(node=>{
     node.addEventListener('click', ()=>{
       const h = hits[parseInt(node.dataset.catIdx,10)];
-      if(h) updShowCatalogPart(h.code, h.rec);
+      if(h){
+        updDetailBack = ()=> updShowCatalogPicker(hits, text);   // back returns to the catalog list
+        updShowCatalogPart(h.code, h.rec);
+      }
     });
   });
 }
@@ -6750,7 +6788,7 @@ function stopUpdCam(){
 }
 
 el('btnOpenUpdate').addEventListener('click', ()=> navTo('update'));
-el('updBack').addEventListener('click', navBack);
+el('updBack').addEventListener('click', updGoBack);
 
 el('updStartCam').addEventListener('click', startUpdCam);
 el('updStopCam').addEventListener('click', stopUpdCam);
