@@ -754,6 +754,7 @@
     <div class="menu-section">
       <div class="menu-label">Data</div>
       <button class="menu-item" id="btnOpenReports">📑 Reports</button>
+      <button class="menu-item" id="btnOpenLow">⚠ Low stock / reorder</button>
       <button class="menu-item" id="btnOpenData">💾 Backup, restore &amp; delete</button>
     </div>
 
@@ -1319,6 +1320,37 @@
     </div>
   </div>
 
+  <!-- ============ LOW STOCK / REORDER ============ -->
+  <div class="cons-view" id="lowView">
+    <header class="top cons-top brand-head">
+      <div class="brand-row3">
+        <button class="theme-btn nav-back" id="lowBack" title="Back" aria-label="Back">←</button>
+        <img class="brand-logo" id="brandLogoLow" alt="Swisslog Healthcare">
+        <button class="theme-btn nav-menu" id="lowMenuBtn" title="Menu" aria-label="Menu">☰</button>
+      </div>
+      <div class="brand-line2">
+        <div class="brand-sub">Low stock / reorder</div>
+        <div class="counter-pill">Below min <b id="lowCounterPill">0</b></div>
+      </div>
+    </header>
+
+    <div class="card">
+      <div class="hist-head"><div class="t">Needs reordering</div></div>
+      <div style="font-size:12px; color:var(--text-dim); margin-bottom:10px;">
+        Every part whose quantity is at or below its minimum stock — out of stock first. Restock, or export a purchase list.
+      </div>
+      <div class="search-row">
+        <input type="text" id="lowSearch" placeholder="🔍 Filter by barcode / name">
+      </div>
+      <div id="lowSummary" style="font-size:13px; line-height:1.9; margin:8px 0;"></div>
+      <button class="btn btn-primary btn-wide" id="lowExport">⬇ Export purchase list (Excel)</button>
+    </div>
+
+    <div class="card">
+      <div id="lowList"></div>
+    </div>
+  </div>
+
   <!-- ============ INVENTORY (box-by-box stock count) ============ -->
   <div class="cons-view" id="invView">
     <header class="top cons-top brand-head">
@@ -1452,7 +1484,12 @@
     <div class="card dim" id="wdForm" style="display:none;">
       <div class="cons-next-msg" id="wdFound"></div>
 
-      <div class="step-label" style="margin-top:4px;"><div class="step-num">2</div><div class="step-title">Quantity to withdraw</div></div>
+      <div id="wdSourceWrap" style="display:none; margin-top:10px;">
+        <div class="step-label"><div class="step-num">•</div><div class="step-title">Take it from</div></div>
+        <div class="choice-grid" id="wdSourceGrid"></div>
+      </div>
+
+      <div class="step-label" style="margin-top:14px;"><div class="step-num">2</div><div class="step-title">Quantity to withdraw</div></div>
       <div class="qty-row">
         <button class="btn qty-btn" id="wdQtyMinus">−</button>
         <input type="number" id="wdQtyInput" min="1" value="1" inputmode="numeric">
@@ -1663,7 +1700,7 @@ function scanBeep(){
   }catch(e){}
 }
 
-const APP_VERSION = 'v1.6';
+const APP_VERSION = 'v1.7';
 document.getElementById('appVersion').textContent = APP_VERSION;
 
 /* ---------- slide-in menu ---------- */
@@ -5301,6 +5338,7 @@ function hideAllOverlays(){
   el('updateView').classList.remove('open');
   el('dataView').classList.remove('open');
   el('invView').classList.remove('open');
+  el('lowView').classList.remove('open');
 }
 
 const VIEW_OPENERS = {
@@ -5312,7 +5350,8 @@ const VIEW_OPENERS = {
   reports: openReports,
   update: openUpdateParts,
   data: openDataView,
-  inv: openInventory
+  inv: openInventory,
+  low: openLow
 };
 
 function navTo(id){
@@ -5409,7 +5448,7 @@ el('goConsumables').addEventListener('click', ()=> navTo('cons'));
 el('goReports') && el('goReports').addEventListener('click', ()=> navTo('reports'));
 
 el('brandLogoHome').src = SWISSLOG_LOGO_HDR;
-['brandLogo','brandLogoHome','brandLogoCons','brandLogoUpd','brandLogoReports','brandLogoWd','brandLogoOrg','brandLogoData','brandLogoInv']
+['brandLogo','brandLogoHome','brandLogoCons','brandLogoUpd','brandLogoReports','brandLogoWd','brandLogoOrg','brandLogoData','brandLogoInv','brandLogoLow']
   .forEach(id=>{ const n = el(id); if(n) n.addEventListener('click', ()=> navTo('home')); });
 refreshHome();
 
@@ -5438,6 +5477,85 @@ el('orgMenuBtn').addEventListener('click', openMenu);
    Pulls a quantity out of an existing part's stock for maintenance use.
    This LOWERS the part's total Qty (same rule as manual consumption), so any
    Organizer stock is trimmed automatically if it no longer fits.            */
+/* ============================================================
+   LOW STOCK / REORDER — parts at or below their minimum stock
+   ============================================================ */
+let lowFilter = '';
+function lowStockParts(){
+  return entries
+    .filter(e=> (e.qty || 0) <= (e.minStock || 0))
+    .map(e=> ({ e, short: Math.max(0, (e.minStock||0) - (e.qty||0)) }))
+    .sort((a,b)=>
+      (a.e.qty||0) - (b.e.qty||0) ||              // out of stock first
+      b.short - a.short ||                         // then biggest shortfall
+      (a.e.box||0) - (b.e.box||0));
+}
+function renderLow(){
+  const all = lowStockParts();
+  const out = all.filter(x=> (x.e.qty||0) === 0).length;
+  const low = all.length - out;
+  el('lowCounterPill').textContent = all.length;
+  el('lowSummary').innerHTML =
+    '<div style="display:flex; justify-content:space-between;"><span>🔴 Out of stock</span><b style="color:var(--red)">' + out + '</b></div>' +
+    '<div style="display:flex; justify-content:space-between;"><span>🟠 At / below minimum</span><b style="color:var(--amber)">' + low + '</b></div>';
+  el('lowExport').disabled = all.length === 0;
+
+  const q = lowFilter.trim().toLowerCase();
+  const rows = all.filter(x=> !q ||
+    String(x.e.barcode||'').toLowerCase().includes(q) ||
+    String(x.e.desc||'').toLowerCase().includes(q) ||
+    String(x.e.descOriginal||'').toLowerCase().includes(q));
+
+  if(!rows.length){
+    el('lowList').innerHTML = '<div class="hist-empty">' +
+      (all.length ? 'No matches for "' + escapeHtml(lowFilter) + '"' : '✅ Everything is above its minimum stock') + '</div>';
+    return;
+  }
+  el('lowList').innerHTML = rows.map(({e,short})=>{
+    const zero = (e.qty||0) === 0;
+    const tag = zero ? '<span class="inv-tag short">OUT</span>' : '<span class="inv-tag extra">LOW</span>';
+    const img = entryImage(e) ? `<img src="${entryImage(e)}" style="width:44px;height:44px;object-fit:contain;border-radius:8px;background:#fff;flex:none;">` : '';
+    return `<div class="inv-row" data-low-id="${e.id}" style="cursor:pointer;">
+      ${img}
+      <div class="nm"><b>${escapeHtml(e.desc || e.barcode)}</b>
+        <span>${escapeHtml(e.barcode)} · box ${e.box||1} · qty ${e.qty||0} / min ${e.minStock||0}${short?' · need '+short:''}</span></div>
+      ${tag}</div>`;
+  }).join('');
+  el('lowList').querySelectorAll('[data-low-id]').forEach(n=> n.addEventListener('click', ()=>{
+    const found = entries.find(x=> x.id === Number(n.dataset.lowId));
+    if(found){ navTo('update'); updShowOne(found); }
+  }));
+}
+function openLow(){ closeMenu(); renderLow(); el('lowView').classList.add('open'); window.scrollTo(0,0); }
+function lowExport(){
+  const all = lowStockParts();
+  if(!all.length){ toast('Nothing to reorder'); return; }
+  if(typeof XLSX === 'undefined'){ toast('Excel export is unavailable offline'); return; }
+  const data = all.map(({e,short})=> ({
+    'Barcode': e.barcode,
+    'Description': e.desc || '',
+    'Italian': e.descOriginal || '',
+    'Machine / Component': entryDeviceLabel(e),
+    'Box': e.box || 1,
+    'In stock': e.qty || 0,
+    'Min stock': e.minStock || 0,
+    'Qty to order': short,
+    'Status': (e.qty||0) === 0 ? 'OUT OF STOCK' : 'LOW'
+  }));
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.json_to_sheet(data);
+  ws['!cols'] = [{wch:14},{wch:42},{wch:36},{wch:22},{wch:6},{wch:9},{wch:9},{wch:12},{wch:14}];
+  XLSX.utils.book_append_sheet(wb, ws, 'Reorder list');
+  XLSX.writeFile(wb, 'reorder-list-' + Date.now() + '.xlsx');
+  toast('Purchase list exported ✓');
+}
+el('btnOpenLow').addEventListener('click', ()=> navTo('low'));
+el('lowBack').addEventListener('click', navBack);
+el('lowMenuBtn').addEventListener('click', openMenu);
+el('brandLogoLow').src = SWISSLOG_LOGO_HDR;
+el('lowExport').addEventListener('click', lowExport);
+el('lowSearch').addEventListener('input', e=>{ lowFilter = e.target.value; renderLow(); });
+
 /* ============================================================
    INVENTORY — box-by-box stock count (cycle count)
    A session snapshots what the stock list says should be in each
@@ -6073,6 +6191,7 @@ function showWdAlert(html, kind){
 function hideWdAlert(){ el('wdAlert').classList.remove('show'); el('wdAlert').innerHTML = ''; }
 
 function wdResetForm(){
+  wdSource = 'box';
   wdPending = null; wdDevices = []; wdSubs = [];
   el('wdScanCard').style.display = 'block';
   el('wdForm').classList.add('dim');
@@ -6106,8 +6225,7 @@ function wdCapture(code){
 
   wdPending = entry;
   hideWdAlert();
-  el('wdQtyInput').max = entry.qty;
-  el('wdQtyInput').value = 1;
+  wdBuildSources(entry);
   const _wdImg = entryImage(entry);
   const wdPhotoHtml = _wdImg
     ? `<img src="${_wdImg}" class="upd-photo-big" alt="">`
@@ -6123,12 +6241,57 @@ function wdCapture(code){
   el('wdForm').style.display = 'block';
 }
 
+// how many of this part sit in the box vs each organizer
+function wdBoxAvail(e){ return Math.max(0, (e.qty||0) - (e.orgQty||[0,0]).reduce((a,b)=> a+(b||0),0)); }
+function wdSrcAvail(e, src){ return src === 'box' ? wdBoxAvail(e) : ((e.orgQty||[0,0])[src] || 0); }
+function wdSrcLabel(src){ return src === 'box' ? 'Box' : 'Organizer ' + (src + 1); }
+
+let wdSource = 'box';
+function wdBuildSources(e){
+  const org0 = (e.orgQty||[0,0])[0] || 0, org1 = (e.orgQty||[0,0])[1] || 0;
+  const boxN = wdBoxAvail(e);
+  const opts = [];
+  if(org0 > 0) opts.push(0);
+  if(org1 > 0) opts.push(1);
+  if(boxN > 0) opts.push('box');
+  // default to an organizer if the part is in one, otherwise the box
+  wdSource = (org0 > 0) ? 0 : (org1 > 0) ? 1 : 'box';
+  const wrap = el('wdSourceWrap'), grid = el('wdSourceGrid');
+  // only offer a choice when the part actually lives in an organizer
+  if((org0 > 0 || org1 > 0) && opts.length > 1){
+    grid.innerHTML = opts.map(s=>{
+      const icon = s === 'box' ? '📦' : '🧰';
+      return `<div class="choice-btn" data-wd-src="${s}"><span class="ic">${icon}</span><span class="lb">${wdSrcLabel(s)} (${wdSrcAvail(e,s)})</span></div>`;
+    }).join('');
+    grid.querySelectorAll('[data-wd-src]').forEach(b=>{
+      b.addEventListener('click', ()=>{
+        const raw = b.dataset.wdSrc;
+        wdSetSource(raw === 'box' ? 'box' : parseInt(raw,10));
+      });
+    });
+    wrap.style.display = 'block';
+  } else {
+    grid.innerHTML = ''; wrap.style.display = 'none';
+  }
+  wdSetSource(wdSource);
+}
+function wdSetSource(src){
+  wdSource = src;
+  document.querySelectorAll('#wdSourceGrid [data-wd-src]').forEach(b=>
+    b.classList.toggle('selected', String(b.dataset.wdSrc) === String(src)));
+  const avail = wdPending ? wdSrcAvail(wdPending, src) : 1;
+  el('wdQtyInput').max = Math.max(1, avail);
+  el('wdQtyInput').value = 1;
+}
+
 function wdConfirm(){
   if(!wdPending) return;
   try{
+    const avail = wdSrcAvail(wdPending, wdSource);
     let v = parseInt(el('wdQtyInput').value, 10);
     if(isNaN(v) || v < 1) v = 1;
-    if(v > wdPending.qty) v = wdPending.qty;
+    if(v > avail) v = avail;
+    if(v < 1){ showWdAlert('⚠ Nothing available in ' + wdSrcLabel(wdSource) + '.', 'red'); return; }
 
     const caseNumber = el('wdCaseInput').value.trim();
     const nowStr = new Date().toLocaleString('en-GB', { hour12:true });
@@ -6136,11 +6299,18 @@ function wdConfirm(){
     withdrawals.push({
       id: Date.now()+Math.floor(Math.random()*1e5),
       barcode: wdPending.barcode, desc: wdPending.desc || '', qty: v,
-      devices: [...wdDevices], subs: [...wdSubs], caseNumber, time: nowStr
+      devices: [...wdDevices], subs: [...wdSubs], caseNumber, time: nowStr,
+      source: wdSource === 'box' ? 'box' : ('org' + wdSource),   // where it was taken from
+      sourceLabel: wdSrcLabel(wdSource)
     });
     wdPersist();
 
+    // remove from the chosen place; organizer stock is part of the total qty
     wdPending.qty = Math.max(0, (wdPending.qty || 0) - v);
+    if(wdSource !== 'box'){
+      wdPending.orgQty = wdPending.orgQty || [0,0];
+      wdPending.orgQty[wdSource] = Math.max(0, (wdPending.orgQty[wdSource] || 0) - v);
+    }
     wdPending.lastTime = nowStr;
     clampOrgQty(wdPending);
     persist();
@@ -6177,17 +6347,43 @@ function renderWdList(){
       <div class="ci-body">
         <div class="ci-code">${escapeHtml(w.barcode)} <span style="color:var(--text-faint); font-weight:500;">× ${w.qty}</span></div>
         <div class="ci-meta">${escapeHtml(w.desc || '')}</div>
-        <div class="ci-meta">Used in: ${escapeHtml(wdUsedLabel(w))}${w.caseNumber ? ' · Case ' + escapeHtml(w.caseNumber) : ''}</div>
+        <div class="ci-meta">Used in: ${escapeHtml(wdUsedLabel(w))}${w.caseNumber ? ' · Case ' + escapeHtml(w.caseNumber) : ''}${w.sourceLabel ? ' · from ' + escapeHtml(w.sourceLabel) : ''}</div>
         <div class="ci-meta">${escapeHtml(w.time)}</div>
       </div>
       <button class="ci-del" title="Delete this record">✕</button>`;
-    div.querySelector('.ci-del').addEventListener('click', ()=>{
-      withdrawals = withdrawals.filter(x=> x.id !== w.id);
-      wdPersist(); renderWdList();
-      toast('Withdrawal record removed');
-    });
+    div.querySelector('.ci-del').addEventListener('click', ()=> wdDeleteRecord(w));
     list.appendChild(div);
   });
+}
+
+function wdDeleteRecord(w){
+  const entry = entries.find(e=> bcKey(e.barcode) === bcKey(w.barcode));
+  const where = w.sourceLabel || (w.source === 'box' ? 'Box' : (w.source && w.source.startsWith('org') ? 'Organizer ' + (parseInt(w.source.slice(3),10)+1) : 'Box'));
+  let restore = false;
+  if(entry){
+    restore = confirm('Delete this withdrawal of ' + (w.qty||0) + '× ' + escapeHtml(w.barcode) + '?\n\n' +
+      'OK  = put the ' + (w.qty||0) + ' back into stock (' + where + ')\n' +
+      'Cancel = just delete the record, leave stock as it is');
+  } else {
+    if(!confirm('Delete this withdrawal record?\n\n(The part is no longer in your stock list, so nothing can be returned.)')) return;
+  }
+  if(entry && restore){
+    const v = w.qty || 0;
+    entry.qty = (entry.qty || 0) + v;
+    if(w.source && w.source.startsWith('org')){
+      const i = parseInt(w.source.slice(3), 10);
+      entry.orgQty = entry.orgQty || [0,0];
+      if(i === 0 || i === 1) entry.orgQty[i] = (entry.orgQty[i] || 0) + v;
+    }
+    entry.lastTime = new Date().toLocaleString('en-GB', { hour12:true });
+    clampOrgQty(entry);
+    persist();
+    renderHistory();
+  }
+  withdrawals = withdrawals.filter(x=> x.id !== w.id);
+  wdPersist();
+  renderWdList();
+  toast(entry && restore ? (w.qty||0) + ' returned to ' + where + ' ✓' : 'Withdrawal record removed');
 }
 
 async function startWdCam(){
