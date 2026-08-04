@@ -1186,6 +1186,10 @@
       <div class="scan-box idle" id="updScanBox" style="aspect-ratio:auto; height:300px;"><div id="updReader" style="width:100%; height:100%;"></div></div>
       <button class="btn btn-primary btn-wide" id="updStartCam" style="margin-top:12px;">▶ Start camera</button>
       <button class="btn btn-stop btn-wide" id="updStopCam" style="display:none; margin-top:12px;">⏹ Stop camera</button>
+      <div id="updModuleFilterWrap" style="margin-top:12px;">
+        <div style="font-size:12px; color:var(--text-dim); margin-bottom:6px;">Narrow to a module (optional):</div>
+        <div class="cons-tabs" id="updModuleFilter" style="flex-wrap:wrap; gap:6px;"></div>
+      </div>
       <div class="scan-row" style="margin-top:10px;">
         <input type="text" id="updManual" placeholder="Barcode, or name (English / Italian)">
         <button class="btn" id="updManualAdd">Search</button>
@@ -1700,7 +1704,7 @@ function scanBeep(){
   }catch(e){}
 }
 
-const APP_VERSION = 'v1.7';
+const APP_VERSION = 'v1.8';
 document.getElementById('appVersion').textContent = APP_VERSION;
 
 /* ---------- slide-in menu ---------- */
@@ -6589,11 +6593,29 @@ el('brandLogoReports').src = SWISSLOG_LOGO_HDR;
 let updScanMode = false;
 let updCamRunning = false;
 let updLastRead = { code:null, t:0 };
+let updModuleFilter = '';   // '' = all modules
+
+function buildUpdModuleFilter(){
+  const wrap = el('updModuleFilter');
+  if(!wrap) return;
+  const mods = SUB_COMPONENTS.filter(m=> m !== 'Not sure');
+  wrap.innerHTML =
+    `<button class="cons-tab type-tab${updModuleFilter===''?' active':''}" data-mod="">All</button>` +
+    mods.map(m=> `<button class="cons-tab type-tab${updModuleFilter===m?' active':''}" data-mod="${m}">${m}</button>`).join('');
+  wrap.querySelectorAll('[data-mod]').forEach(b=> b.addEventListener('click', ()=>{
+    updModuleFilter = b.dataset.mod;
+    wrap.querySelectorAll('[data-mod]').forEach(x=> x.classList.toggle('active', x.dataset.mod === updModuleFilter));
+    const q = el('updManual').value.trim();
+    if(q){ updLastRead = { code:null, t:0 }; updRunSearch(q); }   // re-run with the new scope
+  }));
+}
 
 function openUpdateParts(){
   closeMenu();
   el('updateView').classList.add('open');
+  updModuleFilter = '';
   updResetToScan();
+  buildUpdModuleFilter();
   window.scrollTo(0,0);
 }
 function closeUpdateView(){
@@ -6886,7 +6908,7 @@ function updRunSearch(text){
   if(updCamRunning) stopUpdCam();
 
   const exact = entries.find(e=> bcKey(e.barcode) === bcKey(text));
-  if(exact){ updShowOne(exact); return; }
+  if(exact){ updShowOne(exact); return; }   // a full barcode is unambiguous — module filter is for text search
 
   const q = text.toLowerCase();
   // full text of a part: barcode + English desc + Italian desc + where-used
@@ -6906,13 +6928,23 @@ function updRunSearch(text){
     if(scored.length){ matches = scored.map(x=> x.e); fuzzy = true; }
   }
 
+  // 3) if a module is selected, keep only parts that live in that module
+  if(updModuleFilter){
+    matches = matches.filter(e=> Array.isArray(e.subs) && e.subs.includes(updModuleFilter));
+  }
+
   if(matches.length === 0){
     // Not in the inventory — search the catalog by code, description (EN/IT), machine or component.
-    const hits = catalogSearch(text);
+    let hits = catalogSearch(text);
+    if(updModuleFilter){
+      hits = hits.filter(h=> Array.isArray(h.rec.subs) && h.rec.subs.includes(updModuleFilter));
+    }
     if(hits.length === 1){ updShowCatalogPart(hits[0].code, hits[0].rec); return; }
     if(hits.length > 1){ updShowCatalogPicker(hits, text); return; }
-    showUpdAlert('⚠ <b>No match.</b><br>Nothing found for "' + escapeHtml(text) +
-      '" in your stock or the parts catalog.<br><br>Add it from <b>➕ Add</b> if it\'s a new part.', 'red');
+    showUpdAlert('⚠ <b>No match.</b><br>Nothing found for "' + escapeHtml(text) + '"' +
+      (updModuleFilter ? ' in module <b>' + escapeHtml(updModuleFilter) + '</b>' : '') +
+      '.<br><br>' + (updModuleFilter ? 'Try “All” to widen the search, or ' : '') +
+      'add it from <b>➕ Add</b> if it\'s a new part.', 'red');
     return;
   }
   if(matches.length === 1){ updShowOne(matches[0]); return; }
